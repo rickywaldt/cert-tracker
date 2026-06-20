@@ -1,6 +1,6 @@
 # ITQ Certification Tracker
 
-A self-hosted web app that scrapes all Credly badges earned by ITQ team members and presents them in a searchable, filterable dashboard.
+A self-hosted web app that scrapes all Credly badges earned by ITQ'ers and presents them in a searchable, filterable overview.
 
 ## What it does
 
@@ -220,6 +220,12 @@ All endpoints require HTTP Basic Auth.
 | RUN_ONCE              | scraper        | Set to "true" to exit after one run   |
 
 The `docker-compose.yaml` provides hardcoded development values for all of these. For production deployments, inject secrets via your preferred secrets manager.
+
+## TODO
+
+- CSV export
+- Badge expiry notification
+- Leaderboard
 
 ## License
 
