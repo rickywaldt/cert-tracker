@@ -1,6 +1,7 @@
 import express from 'express';
 import crypto from 'crypto';
 import pg from 'pg';
+import fetch from 'node-fetch';
 
 const { Pool } = pg;
 const app = express();
@@ -34,7 +35,7 @@ app.use((req, res, next) => {
   return res.status(401).send('Authentication required.');
 });
 
-// ── CORS for same-origin frontend ────────────────────────────────────────────
+// ── CORS ──────────────────────────────────────────────────────────────────────
 app.use((req, res, next) => {
   res.set('Access-Control-Allow-Origin', '*');
   res.set('Access-Control-Allow-Headers', 'Authorization, Content-Type');
@@ -42,10 +43,8 @@ app.use((req, res, next) => {
   next();
 });
 
-// ── Image proxy (cache badge images server-side) ─────────────────────────────
-import fetch from 'node-fetch';
-
-const imageCache = new Map(); // url -> { buffer, contentType, ts }
+// ── Image proxy ───────────────────────────────────────────────────────────────
+const imageCache = new Map();
 const IMAGE_TTL = 24 * 60 * 60 * 1000;
 
 app.get('/api/image', async (req, res) => {
@@ -74,7 +73,6 @@ app.get('/api/image', async (req, res) => {
 });
 
 // ── GET /api/meta ─────────────────────────────────────────────────────────────
-// Returns distinct filter values present in the DB
 app.get('/api/meta', async (req, res) => {
   const [countries, issuers, offices] = await Promise.all([
     pool.query(`SELECT DISTINCT country FROM people WHERE country IS NOT NULL AND credly_found = true ORDER BY country`),
@@ -88,18 +86,34 @@ app.get('/api/meta', async (req, res) => {
   });
 });
 
+// ── GET /api/people ───────────────────────────────────────────────────────────
+app.get('/api/people', async (req, res) => {
+  const { country } = req.query;
+  const params = [];
+  let countryClause = '';
+  if (country) {
+    params.push(country);
+    countryClause = `AND p.country = $1`;
+  }
+  const result = await pool.query(`
+    SELECT p.id, p.name, p.credly_slug, p.country, p.office, p.department,
+           COUNT(b.id)::int AS badge_count
+    FROM people p
+    LEFT JOIN badges b ON b.person_id = p.id
+    WHERE p.credly_found = true
+    GROUP BY p.id
+    HAVING COUNT(b.id) > 0
+    ${countryClause}
+    ORDER BY p.name
+  `, params);
+  res.json(result.rows);
+});
+
 // ── GET /api/badges ───────────────────────────────────────────────────────────
-// Query params:
-//   country  — filter by normalised country name
-//   issuer   — filter by issuer (case-insensitive partial match)
-//   status   — "active" | "expired" | "expiring_soon"
-//   q        — keyword search on badge name / issuer / description
-//   page     — page number (default 1)
-//   per_page — results per page (default 50, max 200)
 app.get('/api/badges', async (req, res) => {
-  const { country, issuer, status, q, page = 1, per_page = 50 } = req.query;
+  const { country, issuer, status, q, person_id, page = 1, per_page = 50 } = req.query;
   const perPage = Math.min(parseInt(per_page) || 50, 200);
-  const offset = (Math.max(parseInt(page) || 1, 1) - 1) * perPage;
+  const offset  = (Math.max(parseInt(page) || 1, 1) - 1) * perPage;
 
   const conditions = ['p.credly_found = true'];
   const params = [];
@@ -111,6 +125,10 @@ app.get('/api/badges', async (req, res) => {
   if (issuer) {
     params.push(`%${issuer}%`);
     conditions.push(`b.issuer ILIKE $${params.length}`);
+  }
+  if (person_id) {
+    params.push(parseInt(person_id));
+    conditions.push(`p.id = $${params.length}`);
   }
   if (status === 'active') {
     conditions.push(`(b.expires_at IS NULL OR b.expires_at > now())`);
@@ -151,29 +169,6 @@ app.get('/api/badges', async (req, res) => {
     per_page: perPage,
     data:     dataRes.rows,
   });
-});
-
-// ── GET /api/people ───────────────────────────────────────────────────────────
-// Returns people with at least 1 badge, with their badge count
-app.get('/api/people', async (req, res) => {
-  const { country } = req.query;
-  const params = [];
-  const conditions = ['p.credly_found = true', 'badge_count > 0'];
-  if (country) { params.push(country); conditions.push(`p.country = $${params.length}`); }
-
-  const result = await pool.query(`
-    SELECT p.id, p.name, p.credly_slug, p.country, p.office, p.department,
-           COUNT(b.id)::int AS badge_count
-    FROM people p
-    LEFT JOIN badges b ON b.person_id = p.id
-    WHERE p.credly_found = true
-    GROUP BY p.id
-    HAVING COUNT(b.id) > 0
-    ${country ? `AND p.country = $1` : ''}
-    ORDER BY p.name
-  `, params);
-
-  res.json(result.rows);
 });
 
 // ── GET /api/scrape-status ────────────────────────────────────────────────────

@@ -1,10 +1,14 @@
 // ── Config ────────────────────────────────────────────────────────────────────
-const API = '';  // same origin via nginx proxy — no hostname needed
+const API      = '';
 const PER_PAGE = 48;
 
 // ── State ─────────────────────────────────────────────────────────────────────
-let currentPage = 1;
-let totalResults = 0;
+let currentPage    = 1;
+let totalResults   = 0;
+let selectedPerson = null; // { id, name }
+let allPeople      = [];
+let searchTimer;
+let personTimer;
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────
 const grid        = document.getElementById('grid');
@@ -14,28 +18,41 @@ const countEl     = document.getElementById('result-count');
 const paginationEl= document.getElementById('pagination');
 const scrapeInfo  = document.getElementById('scrape-info');
 
-const fCountry = document.getElementById('f-country');
-const fIssuer  = document.getElementById('f-issuer');
-const fStatus  = document.getElementById('f-status');
-const fQ       = document.getElementById('f-q');
-const clearBtn = document.getElementById('clear-btn');
+const fCountry    = document.getElementById('f-country');
+const fIssuer     = document.getElementById('f-issuer');
+const fStatus     = document.getElementById('f-status');
+const fQ          = document.getElementById('f-q');
+const fPerson     = document.getElementById('f-person');
+const suggestions = document.getElementById('f-person-suggestions');
+const clearBtn    = document.getElementById('clear-btn');
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 async function boot() {
-  await Promise.all([loadMeta(), loadScrapeInfo()]);
+  await Promise.all([loadMeta(), loadPeople(), loadScrapeInfo()]);
   await loadBadges();
 }
 
-// ── Load filter options from /api/meta ────────────────────────────────────────
+// ── Load filter options ───────────────────────────────────────────────────────
 async function loadMeta() {
   try {
     const res = await fetch(`${API}/api/meta`);
     if (!res.ok) return;
     const { countries, issuers } = await res.json();
     countries.forEach(c => fCountry.add(new Option(c, c)));
-    issuers.forEach(i  => fIssuer.add(new Option(i, i)));
+    issuers.forEach(i => fIssuer.add(new Option(i, i)));
   } catch (e) {
     console.warn('Could not load meta:', e.message);
+  }
+}
+
+// ── Load all people for autocomplete ─────────────────────────────────────────
+async function loadPeople() {
+  try {
+    const res = await fetch(`${API}/api/people`);
+    if (!res.ok) return;
+    allPeople = await res.json();
+  } catch (e) {
+    console.warn('Could not load people:', e.message);
   }
 }
 
@@ -54,17 +71,18 @@ async function loadScrapeInfo() {
   } catch { /* silent */ }
 }
 
-// ── Load badges from /api/badges ─────────────────────────────────────────────
+// ── Load badges ───────────────────────────────────────────────────────────────
 async function loadBadges(page = 1) {
   currentPage = page;
   showLoading(true);
   errorEl.style.display = 'none';
 
   const params = new URLSearchParams();
-  if (fCountry.value) params.set('country', fCountry.value);
-  if (fIssuer.value)  params.set('issuer',  fIssuer.value);
-  if (fStatus.value)  params.set('status',  fStatus.value);
-  if (fQ.value.trim()) params.set('q',      fQ.value.trim());
+  if (fCountry.value)        params.set('country',   fCountry.value);
+  if (fIssuer.value)         params.set('issuer',    fIssuer.value);
+  if (fStatus.value)         params.set('status',    fStatus.value);
+  if (fQ.value.trim())       params.set('q',         fQ.value.trim());
+  if (selectedPerson)        params.set('person_id', selectedPerson.id);
   params.set('page',     page);
   params.set('per_page', PER_PAGE);
 
@@ -94,11 +112,10 @@ function renderBadges(badges) {
 }
 
 function makeCard(b) {
-  const card = document.createElement('div');
-  card.className = 'card';
-
-  const status = badgeStatus(b.expires_at);
-  const imageUrl = b.image_url
+  const card      = document.createElement('div');
+  card.className  = 'card';
+  const status    = badgeStatus(b.expires_at);
+  const imageUrl  = b.image_url
     ? `${API}/api/image?url=${encodeURIComponent(b.image_url)}`
     : null;
 
@@ -125,21 +142,22 @@ function makeCard(b) {
 
 function badgeStatus(expiresAt) {
   if (!expiresAt) return { cls: 'noexpiry', label: 'No expiry' };
-  const exp = new Date(expiresAt);
-  const now = new Date();
-  const threeMonths = new Date(); threeMonths.setMonth(threeMonths.getMonth() + 3);
+  const exp        = new Date(expiresAt);
+  const now        = new Date();
+  const threeMonths= new Date(); threeMonths.setMonth(threeMonths.getMonth() + 3);
   if (exp < now)         return { cls: 'expired', label: 'Expired' };
-  if (exp <= threeMonths) return { cls: 'soon',    label: 'Expiring soon' };
+  if (exp < threeMonths) return { cls: 'soon',    label: 'Expiring soon' };
   return { cls: 'active', label: 'Active' };
 }
 
-// ── Results bar & pagination ──────────────────────────────────────────────────
+// ── Results bar ───────────────────────────────────────────────────────────────
 function renderResultsBar(total, page) {
   const from = (page - 1) * PER_PAGE + 1;
   const to   = Math.min(page * PER_PAGE, total);
   countEl.textContent = total === 0 ? 'No results' : `Showing ${from}–${to} of ${total} badges`;
 }
 
+// ── Pagination ────────────────────────────────────────────────────────────────
 function renderPagination(total, page) {
   paginationEl.innerHTML = '';
   const totalPages = Math.ceil(total / PER_PAGE);
@@ -151,9 +169,7 @@ function renderPagination(total, page) {
   prev.addEventListener('click', () => loadBadges(page - 1));
   paginationEl.appendChild(prev);
 
-  // Show up to 5 page buttons around current page
-  const range = pageRange(page, totalPages);
-  range.forEach(p => {
+  pageRange(page, totalPages).forEach(p => {
     if (p === '…') {
       const span = document.createElement('span');
       span.textContent = '…';
@@ -185,12 +201,71 @@ function pageRange(current, total) {
   return pages;
 }
 
-// ── Event listeners ───────────────────────────────────────────────────────────
+// ── Person autocomplete ───────────────────────────────────────────────────────
+function showSuggestions(q) {
+  suggestions.innerHTML = '';
+
+  if (q.length < 2) { suggestions.classList.remove('open'); return; }
+
+  const matches = allPeople
+    .filter(p => p.name.toLowerCase().includes(q.toLowerCase()))
+    .slice(0, 10);
+
+  if (!matches.length) { suggestions.classList.remove('open'); return; }
+
+  matches.forEach(p => {
+    const li = document.createElement('li');
+    // Highlight the matching part
+    const idx  = p.name.toLowerCase().indexOf(q.toLowerCase());
+    const pre  = escapeHTML(p.name.slice(0, idx));
+    const match= escapeHTML(p.name.slice(idx, idx + q.length));
+    const post = escapeHTML(p.name.slice(idx + q.length));
+    li.innerHTML = `${pre}<strong>${match}</strong>${post}`;
+
+    li.addEventListener('mousedown', e => {
+      e.preventDefault(); // keep focus on input until we're done
+      selectedPerson  = p;
+      fPerson.value   = p.name;
+      suggestions.classList.remove('open');
+      loadBadges(1);
+    });
+    suggestions.appendChild(li);
+  });
+
+  suggestions.classList.add('open');
+}
+
+fPerson.addEventListener('input', () => {
+  // If user clears the input, clear the person filter
+  if (!fPerson.value.trim()) {
+    selectedPerson = null;
+    suggestions.classList.remove('open');
+    loadBadges(1);
+    return;
+  }
+  clearTimeout(personTimer);
+  personTimer = setTimeout(() => showSuggestions(fPerson.value.trim()), 150);
+});
+
+fPerson.addEventListener('blur', () => {
+  // Small delay so the mousedown on a suggestion fires first
+  setTimeout(() => suggestions.classList.remove('open'), 160);
+});
+
+fPerson.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    selectedPerson = null;
+    fPerson.value  = '';
+    suggestions.classList.remove('open');
+    loadBadges(1);
+  }
+});
+
+// ── Filter event listeners ────────────────────────────────────────────────────
 [fCountry, fIssuer, fStatus].forEach(el =>
   el.addEventListener('change', () => loadBadges(1))
 );
 
-let searchTimer;
 fQ.addEventListener('input', () => {
   clearTimeout(searchTimer);
   searchTimer = setTimeout(() => loadBadges(1), 400);
@@ -201,6 +276,9 @@ clearBtn.addEventListener('click', () => {
   fIssuer.value  = '';
   fStatus.value  = '';
   fQ.value       = '';
+  fPerson.value  = '';
+  selectedPerson = null;
+  suggestions.classList.remove('open');
   loadBadges(1);
 });
 

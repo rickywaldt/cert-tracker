@@ -2,20 +2,18 @@
 // Uses the same proxy approach as credly-scraper: direct HTTPS to credly.com.
 
 const CREDLY_BASE = 'https://www.credly.com';
-const CONCURRENCY = 5;
 
 function nameToSlug(name) {
   return name
     .toLowerCase()
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-    .replace(/ø/g, 'o').replace(/æ/g, 'ae').replace(/å/g, 'a') // Nordic extras
+    .replace(/ø/g, 'o').replace(/æ/g, 'ae').replace(/å/g, 'a')
     .replace(/[^a-z0-9\s-]/g, '')
     .trim()
     .replace(/\s+/g, '-')
     .replace(/-{2,}/g, '-');
 }
 
-// Slug variants to try in order
 function slugVariants(name) {
   const base = nameToSlug(name);
   const noHyphen = base.replace(/-/g, '');
@@ -69,18 +67,20 @@ export async function fetchAllBadges(slug) {
   }
 
   return allBadges.map(b => ({
-    credly_id:   b.id,
-    name:        b.badge_template?.name || b.name || 'Unknown',
-    issuer:      b.badge_template?.issuer_org_name || null,
-    issued_at:   b.issued_at ? b.issued_at.split('T')[0] : null,
-    expires_at:  b.expires_at_date || null,
-    badge_url:   b.badge_url || `${CREDLY_BASE}/badges/${b.id}`,
-    image_url:   b.badge_template?.image_url || null,
+    credly_id: b.id,
+    name: b.badge_template?.name || b.name || 'Unknown',
+    // issuer is at b.issuer.entities[].entity.name where primary === true
+    issuer: b.issuer?.entities?.find(e => e.primary)?.entity?.name
+          || b.issuer?.entities?.[0]?.entity?.name
+          || null,
+    issued_at: b.issued_at ? b.issued_at.split('T')[0] : null,
+    expires_at: b.expires_at_date || null,
+    badge_url: b.badge_url || `${CREDLY_BASE}/badges/${b.id}`,
+    image_url: b.badge_template?.image_url || null,
     description: b.badge_template?.description || null,
   }));
 }
 
-// Run tasks with max concurrency
 export function withConcurrency(tasks, limit) {
   let i = 0;
   const results = new Array(tasks.length);
