@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ITQ Certification Tracker</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>ITQ Certification Tracker</h1>
+    <p class="subtitle">Browse certifications held by ITQ team members</p>
+    <div id="scrape-info" class="scrape-info"></div>
+  </header>
+
+  <section class="filters">
+    <div class="filter-group">
+      <label for="f-country">Country</label>
+      <select id="f-country"><option value="">All countries</option></select>
+    </div>
+    <div class="filter-group">
+      <label for="f-issuer">Issuer</label>
+      <select id="f-issuer"><option value="">All issuers</option></select>
+    </div>
+    <div class="filter-group">
+      <label for="f-status">Status</label>
+      <select id="f-status">
+        <option value="">All</option>
+        <option value="active">Active</option>
+        <option value="expired">Expired</option>
+        <option value="expiring_soon">Expiring within 3 months</option>
+      </select>
+    </div>
+    <div class="filter-group filter-group--search">
+      <label for="f-q">Search</label>
+      <input type="text" id="f-q" placeholder="e.g. RHCSA, VMware, AWS…">
+    </div>
+    <button id="clear-btn" class="btn-secondary">Clear filters</button>
+  </section>
+
+  <div class="results-bar">
+    <span id="result-count"></span>
+    <div class="pagination" id="pagination"></div>
+  </div>
+
+  <div id="grid" class="grid"></div>
+
+  <div id="loading" class="loading" style="display:none">Loading…</div>
+  <div id="error" class="error" style="display:none"></div>
+</div>
+<script src="app.js"></script>
+</body>
+</html>
