@@ -3,6 +3,9 @@
     "context": "..",
     "dockerfile": "Dockerfile"
   },
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  },
   "remoteEnv": {
     "GITHUB_USERNAME": "${localEnv:GITHUB_USERNAME}",
     "GITHUB_TOKEN": "${localEnv:GITHUB_TOKEN}",
