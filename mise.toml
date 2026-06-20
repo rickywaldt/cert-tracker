@@ -3,3 +3,6 @@ node = "22"
 
 [env]
 NODE_ENV = "development"
+
+[tasks.install]
+run = ["npm install --prefix scraper", "npm install --prefix api"]
