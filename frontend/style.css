@@ -85,4 +85,20 @@ header .subtitle { color: #666; margin-top: 0.25rem; }
 .badge-status--active   { background: #d4edda; color: #155724; }
 .badge-status--expired  { background: #f8d7da; color: #721c24; }
 .badge-status--soon     { background: #fff3cd; color: #856404; }
-.badge-status--noexpiry { background: #e8e8e
+.badge-status--noexpiry { background: #e8e8e8; color: #555; }
+
+.loading { text-align: center; padding: 3rem; color: #999; font-size: 1rem; }
+.error   { background: #f8d7da; color: #721c24; padding: 1rem; border-radius: 6px; margin-top: 1rem; }
+
+/* Card footer link */
+.card__link {
+  display: inline-block; margin-top: 0.5rem; font-size: 0.78rem;
+  color: #e2511a; text-decoration: none;
+}
+.card__link:hover { text-decoration: underline; }
+
+/* Responsive */
+@media (max-width: 600px) {
+  .filters { flex-direction: column; }
+  .filter-group { min-width: 100%; }
+}
