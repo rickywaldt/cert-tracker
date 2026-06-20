@@ -1,7 +1,8 @@
 // Scrapes all people from itq.eu/meet-our-team via the FacetWP API.
 // Returns array of { name, department, office, country }
+// Strategy: fetch each office filter separately to associate names with offices.
 
-const ITQ_URL = 'https://itq.eu/meet-our-team/';
+const ITQ_URL = 'https://itq.eu/wp-json/facetwp/v1/refresh';
 
 const OFFICE_TO_COUNTRY = {
   'ITQ Netherlands (Beverwijk)':  'Netherlands',
@@ -15,11 +16,25 @@ const OFFICE_TO_COUNTRY = {
   'ITQ Denmark':                  'Denmark',
 };
 
-async function fetchPage(page) {
-  const body = JSON.stringify({
-    action: 'facetwp_refresh',
-    data: {
-      facets: { departments: [], offices: [], employees_load_more: [] },
+// All known office IDs — fetched from the live FacetWP filter on 2026-06-20
+const OFFICES = [
+  { value: '6008',  label: 'ITQ Netherlands (Beverwijk)' },
+  { value: '20312', label: 'ITQ Netherlands (Amersfoort)' },
+  { value: '6011',  label: 'ITQ Germany' },
+  { value: '6010',  label: 'ITQ Belgium' },
+  { value: '14638', label: 'ITQ France' },
+  { value: '14629', label: 'ITQ Luxembourg' },
+  { value: '24805', label: 'ITQ Sweden' },
+  { value: '24810', label: 'ITQ Denmark' },
+  { value: '10762', label: 'ITQ Nederland (Beverwijk)' },
+];
+
+async function fetchOfficePage(officeValue, page) {
+  const res = await fetch(ITQ_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'User-Agent': 'ITQCertTracker/1.0' },
+    body: JSON.stringify({
+      facets: { departments: [], offices: [officeValue], employees_load_more: [] },
       frozen_facets: {},
       http_params: { get: [], uri: 'meet-our-team', url_vars: [] },
       template: 'wp',
@@ -28,66 +43,69 @@ async function fetchPage(page) {
       is_bfcache: 0,
       first_load: page === 1 ? 1 : 0,
       paged: page,
-    },
+    }),
   });
-
-  const res = await fetch(ITQ_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'User-Agent': 'ITQCertTracker/1.0' },
-    body,
-  });
-
-  if (!res.ok) throw new Error(`FacetWP returned ${res.status} for page ${page}`);
+  if (!res.ok) throw new Error(`FacetWP returned ${res.status} for office ${officeValue} page ${page}`);
   return res.json();
 }
 
-function stripTags(html) {
-  return html.replace(/<[^>]+>/g, '').trim();
+function extractNames(html) {
+  const names = [];
+  const re = /class="[^"]*employee-card__name[^"]*"[^>]*>\s*([\s\S]*?)\s*<\/span>/g;
+  for (const m of html.matchAll(re)) {
+    const name = m[1].replace(/<[^>]+>/g, '').trim();
+    if (name) names.push(name);
+  }
+  return names;
 }
 
-function parsePeople(html) {
-  const people = [];
-
-  // Split into individual employee card blocks
-  const cardBlocks = html.split(/<article\b/i).slice(1);
-
-  for (const block of cardBlocks) {
-    const nameMatch = block.match(/class="[^"]*employee-card__name[^"]*"[^>]*>([\s\S]*?)<\/[^>]+>/);
-    const officeMatch = block.match(/class="[^"]*employee-card__location[^"]*"[^>]*>([\s\S]*?)<\/[^>]+>/);
-    const deptMatch  = block.match(/class="[^"]*employee-card__function[^"]*"[^>]*>([\s\S]*?)<\/[^>]+>/);
-
-    if (!nameMatch) continue;
-
-    const name = stripTags(nameMatch[1]);
-    const office = officeMatch ? stripTags(officeMatch[1]) : null;
-    const department = deptMatch ? stripTags(deptMatch[1]) : null;
-
-    if (!name) continue;
-
-    people.push({
-      name,
-      department,
-      office,
-      country: OFFICE_TO_COUNTRY[office] || null,
-    });
+function extractFunctions(html) {
+  const funcs = [];
+  const re = /class="[^"]*employee-card__function[^"]*"[^>]*>\s*([\s\S]*?)\s*<\/[^>]+>/g;
+  for (const m of html.matchAll(re)) {
+    const f = m[1].replace(/<[^>]+>/g, '').trim();
+    funcs.push(f || null);
   }
-
-  return people;
+  return funcs;
 }
 
 export async function scrapeITQTeam() {
-  const firstData = await fetchPage(1);
-  const totalPages = firstData.settings?.pager?.total_pages || 1;
+  // Map of name -> { name, office, country, department }
+  // (a person appears in exactly one office filter)
+  const peopleMap = new Map();
 
-  console.log(`[itq] ${firstData.settings?.pager?.total_rows} people across ${totalPages} pages`);
+  for (const office of OFFICES) {
+    // Fetch first page to get total pages for this office
+    const firstData = await fetchOfficePage(office.value, 1);
+    const totalPages = firstData.settings?.pager?.total_pages || 1;
 
-  const pageNums = Array.from({ length: totalPages }, (_, i) => i + 1);
-  const allData = await Promise.all(pageNums.map(fetchPage));
+    // Fetch remaining pages
+    const pageNums = Array.from({ length: totalPages }, (_, i) => i + 1);
+    // Already have page 1, fetch the rest
+    const restData = totalPages > 1
+      ? await Promise.all(pageNums.slice(1).map(p => fetchOfficePage(office.value, p)))
+      : [];
+    const allData = [firstData, ...restData];
 
-  const allPeople = [];
-  for (const data of allData) {
-    allPeople.push(...parsePeople(data.template));
+    for (const data of allData) {
+      const names = extractNames(data.template);
+      const funcs = extractFunctions(data.template);
+
+      for (let i = 0; i < names.length; i++) {
+        const name = names[i];
+        if (!peopleMap.has(name)) {
+          peopleMap.set(name, {
+            name,
+            office: office.label,
+            country: OFFICE_TO_COUNTRY[office.label] || null,
+            department: funcs[i] || null,
+          });
+        }
+      }
+    }
+
+    console.log(`[itq] ${office.label}: found ${peopleMap.size} total so far`);
   }
 
-  return allPeople;
+  return Array.from(peopleMap.values());
 }
