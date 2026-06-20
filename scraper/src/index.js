@@ -1,7 +1,7 @@
 import { initDb, upsertPerson, upsertPersonNoSlug, upsertBadge,
-         startScrapeRun, finishScrapeRun, pool } from './db.js';
+  startScrapeRun, finishScrapeRun, pool } from './db.js';
 import { scrapeITQTeam } from './itq.js';
-import { resolveCredlySlug, fetchAllBadges, withConcurrency } from './credly.js';
+import { resolveCredlySlugs, fetchAllBadges, withConcurrency } from './credly.js';
 
 async function run() {
   console.log('[scraper] Starting...');
@@ -23,28 +23,47 @@ async function run() {
     process.exit(1);
   }
 
-  // 2. Resolve Credly slugs + persist people
+  // 2. Resolve Credly slugs + persist people + fetch badges
   const tasks = people.map(person => async () => {
     try {
-      const slug = await resolveCredlySlug(person.name);
-      const row = slug
-        ? await upsertPerson({ ...person, credly_slug: slug, credly_found: true })
-        : await upsertPersonNoSlug(person);
+      // Find all Credly slugs for this person (handles disambiguation suffixes
+      // and duplicate accounts like ricky-waldt + ricky-waldt.f87f9886)
+      const slugs = await resolveCredlySlugs(person.name);
 
-      if (row?.inserted) stats.peopleNew++;
-
-      if (!slug || !row) return;
-
-      // 3. Fetch all badges for this person
-      const badges = await fetchAllBadges(slug);
-      stats.badgesTotal += badges.length;
-
-      for (const badge of badges) {
-        const b = await upsertBadge(row.id, badge);
-        if (b?.inserted) stats.badgesNew++;
+      if (!slugs.length) {
+        await upsertPersonNoSlug(person);
+        return;
       }
 
-      console.log(`[scraper] ✓ ${person.name} — ${badges.length} badges`);
+      // Use the first (canonical) slug as the primary for the person record
+      const primarySlug = slugs[0];
+      const row = await upsertPerson({
+        ...person,
+        credly_slug: primarySlug,
+        credly_found: true,
+      });
+      if (row?.inserted) stats.peopleNew++;
+      if (!row) return;
+
+      // Fetch badges from ALL found slugs (combines badges from duplicate accounts)
+      let totalBadgesForPerson = 0;
+      for (const slug of slugs) {
+        try {
+          const badges = await fetchAllBadges(slug);
+          stats.badgesTotal += badges.length;
+          totalBadgesForPerson += badges.length;
+          for (const badge of badges) {
+            const b = await upsertBadge(row.id, badge);
+            if (b?.inserted) stats.badgesNew++;
+          }
+        } catch (err) {
+          console.warn(`[scraper] ✗ ${person.name} (${slug}): ${err.message}`);
+          stats.errors.push({ person: person.name, slug, error: err.message });
+        }
+      }
+
+      const profileNote = slugs.length > 1 ? ` (${slugs.length} profiles: ${slugs.join(', ')})` : '';
+      console.log(`[scraper] ✓ ${person.name} — ${totalBadgesForPerson} badges${profileNote}`);
     } catch (err) {
       console.warn(`[scraper] ✗ ${person.name}: ${err.message}`);
       stats.errors.push({ person: person.name, error: err.message });
@@ -54,7 +73,10 @@ async function run() {
   await withConcurrency(tasks, 5);
   await finishScrapeRun(runId, stats);
 
-  console.log(`[scraper] Done. People: ${stats.peopleTotal} (${stats.peopleNew} new). Badges: ${stats.badgesTotal} (${stats.badgesNew} new). Errors: ${stats.errors.length}`);
+  console.log(
+    `[scraper] Done. People: ${stats.peopleTotal} (${stats.peopleNew} new). ` +
+    `Badges: ${stats.badgesTotal} (${stats.badgesNew} new). Errors: ${stats.errors.length}`
+  );
   await pool.end();
 }
 

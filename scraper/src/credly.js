@@ -1,7 +1,16 @@
 // Resolves Credly slugs from names and fetches all badges per user.
-// Uses the same proxy approach as credly-scraper: direct HTTPS to credly.com.
-
 const CREDLY_BASE = 'https://www.credly.com';
+
+// Manual overrides for people whose slug can't be derived from their name.
+// Key: normalised name (lowercase), Value: array of known slugs.
+// Add entries here when the auto-discovery misses someone.
+const SLUG_OVERRIDES = {
+  'davy van de laar':  ['davy-van-de-laar.906902d4'],
+  'frank sengewald':   ['frank-sengewald.76d85ba8'],
+  'andreas diemer':    ['andreas-diemer.ae4216a6'],
+  'ricky waldt':       ['ricky-waldt', 'ricky-waldt.f87f9886'],
+  'stijn vermoesen':   ['stijnvermoesen'],
+};
 
 function nameToSlug(name) {
   return name
@@ -12,12 +21,6 @@ function nameToSlug(name) {
     .trim()
     .replace(/\s+/g, '-')
     .replace(/-{2,}/g, '-');
-}
-
-function slugVariants(name) {
-  const base = nameToSlug(name);
-  const noHyphen = base.replace(/-/g, '');
-  return [base, noHyphen];
 }
 
 async function checkSlug(slug) {
@@ -33,50 +36,69 @@ async function checkSlug(slug) {
   }
 }
 
-export async function resolveCredlySlug(name) {
-  for (const variant of slugVariants(name)) {
-    if (await checkSlug(variant)) return variant;
+// Find all valid Credly slugs for a person.
+// Returns array — usually 1 entry, 2 for people with duplicate accounts.
+export async function resolveCredlySlugs(name) {
+  const normalisedName = name.toLowerCase().trim();
+
+  // 1. Check manual overrides first
+  if (SLUG_OVERRIDES[normalisedName]) {
+    const confirmed = [];
+    for (const slug of SLUG_OVERRIDES[normalisedName]) {
+      if (await checkSlug(slug)) confirmed.push(slug);
+    }
+    if (confirmed.length) return confirmed;
   }
-  return null;
+
+  // 2. Auto-derive slug from name and try variants
+  const base = nameToSlug(name);
+  const noHyphen = base.replace(/-/g, '');
+  const found = [];
+
+  if (await checkSlug(base))                        found.push(base);
+  if (!found.length && await checkSlug(noHyphen))   found.push(noHyphen);
+
+  return found;
+}
+
+// Keep single-slug export for backwards compat
+export async function resolveCredlySlug(name) {
+  const slugs = await resolveCredlySlugs(name);
+  return slugs[0] || null;
 }
 
 async function fetchBadgePage(slug, page) {
   const url = `${CREDLY_BASE}/users/${slug}/badges?page=${page}&page_size=48&sort=most_popular`;
   const res = await fetch(url, {
-    headers: {
-      'Accept': 'application/json',
-      'User-Agent': 'ITQCertTracker/1.0',
-    },
+    headers: { 'Accept': 'application/json', 'User-Agent': 'ITQCertTracker/1.0' },
   });
   if (!res.ok) throw new Error(`Credly badges returned ${res.status} for ${slug} page ${page}`);
   return res.json();
 }
 
 export async function fetchAllBadges(slug) {
-  const first = await fetchBadgePage(slug, 1);
-  const total = first.metadata?.total_count || 0;
-  const perPage = first.metadata?.per || 48;
+  const first      = await fetchBadgePage(slug, 1);
+  const total      = first.metadata?.total_count || 0;
+  const perPage    = first.metadata?.per || 48;
   const totalPages = Math.ceil(total / perPage);
-
-  const allBadges = [...(first.data || [])];
+  const allBadges  = [...(first.data || [])];
 
   if (totalPages > 1) {
-    const pages = Array.from({ length: totalPages - 1 }, (_, i) => i + 2);
+    const pages     = Array.from({ length: totalPages - 1 }, (_, i) => i + 2);
     const remaining = await Promise.all(pages.map(p => fetchBadgePage(slug, p)));
     for (const page of remaining) allBadges.push(...(page.data || []));
   }
 
   return allBadges.map(b => ({
-    credly_id: b.id,
-    name: b.badge_template?.name || b.name || 'Unknown',
-    // issuer is at b.issuer.entities[].entity.name where primary === true
-    issuer: b.issuer?.entities?.find(e => e.primary)?.entity?.name
-          || b.issuer?.entities?.[0]?.entity?.name
-          || null,
-    issued_at: b.issued_at ? b.issued_at.split('T')[0] : null,
-    expires_at: b.expires_at_date || null,
-    badge_url: b.badge_url || `${CREDLY_BASE}/badges/${b.id}`,
-    image_url: b.badge_template?.image_url || null,
+    credly_id:   b.id,
+    name:        b.badge_template?.name || b.name || 'Unknown',
+    issuer:      b.issuer?.entities?.find(e => e.primary)?.entity?.name
+               || b.issuer?.entities?.[0]?.entity?.name
+               || null,
+    issued_at:   b.issued_at ? b.issued_at.split('T')[0] : null,
+    expires_at:  b.expires_at_date || null,
+    badge_url:   b.badge_url || `${CREDLY_BASE}/badges/${b.id}`,
+    image_url:   b.badge_template?.image_url || null,
     description: b.badge_template?.description || null,
   }));
 }
