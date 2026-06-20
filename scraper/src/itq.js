@@ -45,8 +45,20 @@ async function fetchOfficePage(officeValue, page) {
       paged: page,
     }),
   });
+
   if (!res.ok) throw new Error(`FacetWP returned ${res.status} for office ${officeValue} page ${page}`);
-  return res.json();
+
+  const data = await res.json();
+
+  // REST endpoint uses 'results', ajax endpoint uses 'template'
+  const html = data.results ?? data.template ?? '';
+  const totalPages = data.settings?.pager?.total_pages ?? data.pager?.total_pages ?? 1;
+
+  if (!html) {
+    console.warn(`[itq] Empty HTML for office ${officeValue} page ${page} — keys: ${Object.keys(data).join(', ')}`);
+  }
+
+  return { html, totalPages };
 }
 
 function extractNames(html) {
@@ -75,21 +87,18 @@ export async function scrapeITQTeam() {
   const peopleMap = new Map();
 
   for (const office of OFFICES) {
-    // Fetch first page to get total pages for this office
-    const firstData = await fetchOfficePage(office.value, 1);
-    const totalPages = firstData.settings?.pager?.total_pages || 1;
+    const first = await fetchOfficePage(office.value, 1);
+    const totalPages = first.totalPages;
 
-    // Fetch remaining pages
-    const pageNums = Array.from({ length: totalPages }, (_, i) => i + 1);
-    // Already have page 1, fetch the rest
-    const restData = totalPages > 1
-      ? await Promise.all(pageNums.slice(1).map(p => fetchOfficePage(office.value, p)))
+    const restPages = totalPages > 1
+      ? await Promise.all(
+          Array.from({ length: totalPages - 1 }, (_, i) => fetchOfficePage(office.value, i + 2))
+        )
       : [];
-    const allData = [firstData, ...restData];
 
-    for (const data of allData) {
-      const names = extractNames(data.template);
-      const funcs = extractFunctions(data.template);
+    for (const { html } of [first, ...restPages]) {
+      const names = extractNames(html);
+      const funcs = extractFunctions(html);
 
       for (let i = 0; i < names.length; i++) {
         const name = names[i];
@@ -104,7 +113,7 @@ export async function scrapeITQTeam() {
       }
     }
 
-    console.log(`[itq] ${office.label}: found ${peopleMap.size} total so far`);
+    console.log(`[itq] ${office.label}: ${peopleMap.size} total so far`);
   }
 
   return Array.from(peopleMap.values());
