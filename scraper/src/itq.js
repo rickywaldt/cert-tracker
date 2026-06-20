@@ -2,7 +2,7 @@
 // Returns array of { name, department, office, country }
 // Strategy: fetch each office filter separately to associate names with offices.
 
-const ITQ_URL = 'https://itq.eu/wp-json/facetwp/v1/refresh';
+const ITQ_URL = 'https://itq.eu/meet-our-team/';
 
 const OFFICE_TO_COUNTRY = {
   'ITQ Netherlands (Beverwijk)':  'Netherlands',
@@ -16,7 +16,6 @@ const OFFICE_TO_COUNTRY = {
   'ITQ Denmark':                  'Denmark',
 };
 
-// All known office IDs — fetched from the live FacetWP filter on 2026-06-20
 const OFFICES = [
   { value: '6008',  label: 'ITQ Netherlands (Beverwijk)' },
   { value: '20312', label: 'ITQ Netherlands (Amersfoort)' },
@@ -30,10 +29,9 @@ const OFFICES = [
 ];
 
 async function fetchOfficePage(officeValue, page) {
-  const res = await fetch(ITQ_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'User-Agent': 'ITQCertTracker/1.0' },
-    body: JSON.stringify({
+  const body = JSON.stringify({
+    action: 'facetwp_refresh',
+    data: {
       facets: { departments: [], offices: [officeValue], employees_load_more: [] },
       frozen_facets: {},
       http_params: { get: [], uri: 'meet-our-team', url_vars: [] },
@@ -43,16 +41,20 @@ async function fetchOfficePage(officeValue, page) {
       is_bfcache: 0,
       first_load: page === 1 ? 1 : 0,
       paged: page,
-    }),
+    },
+  });
+
+  const res = await fetch(ITQ_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'User-Agent': 'ITQCertTracker/1.0' },
+    body,
   });
 
   if (!res.ok) throw new Error(`FacetWP returned ${res.status} for office ${officeValue} page ${page}`);
 
   const data = await res.json();
-
-  // REST endpoint uses 'results', ajax endpoint uses 'template'
-  const html = data.results ?? data.template ?? '';
-  const totalPages = data.settings?.pager?.total_pages ?? data.pager?.total_pages ?? 1;
+  const html = data.template ?? '';
+  const totalPages = data.settings?.pager?.total_pages ?? 1;
 
   if (!html) {
     console.warn(`[itq] Empty HTML for office ${officeValue} page ${page} — keys: ${Object.keys(data).join(', ')}`);
@@ -82,8 +84,6 @@ function extractFunctions(html) {
 }
 
 export async function scrapeITQTeam() {
-  // Map of name -> { name, office, country, department }
-  // (a person appears in exactly one office filter)
   const peopleMap = new Map();
 
   for (const office of OFFICES) {
