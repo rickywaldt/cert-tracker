@@ -1,0 +1,12 @@
+{
+  "build": {
+    "context": "..",
+    "dockerfile": "Dockerfile"
+  },
+  "remoteEnv": {
+    "GITHUB_USERNAME": "${localEnv:GITHUB_USERNAME}",
+    "GITHUB_TOKEN": "${localEnv:GITHUB_TOKEN}",
+    "GITHUB_API_TOKEN": "${localEnv:GITHUB_API_TOKEN}"
+  },
+  "postCreateCommand": "scripts/setup"
+}
