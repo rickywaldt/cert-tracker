@@ -55,11 +55,11 @@ This scrapes itq.eu and Credly, populates the database, and exits. On first run 
 
 ### 4. Open the app
 
-Navigate to <http://localhost:8080> and log in.
+Navigate to <http://localhost:8080> and log in with admin / devpassword.
 
 > **Running inside DevPod?** Forward the port first:
 >
->     devpod ssh cert-tracker -- -L 8080:localhost:8080
+>     devpod ssh -L 8080:localhost:8080 cert-tracker
 
 ### 5. Subsequent runs
 
