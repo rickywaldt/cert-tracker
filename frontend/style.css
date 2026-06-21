@@ -37,6 +37,24 @@ header .subtitle { color: #666; margin-top: 0.25rem; }
 }
 .btn-secondary:hover { background: #f5f5f5; }
 
+/* Status single-select — match multiselect trigger appearance */
+#f-status {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 100%;
+  padding: 0.45rem 2rem 0.45rem 0.65rem;
+  border: 1px solid #ddd;
+  border-radius: 5px;
+  background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%23888'/%3E%3C/svg%3E") no-repeat right 0.65rem center;
+  background-size: 8px 5px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  color: #222;
+  font-family: inherit;
+  line-height: normal;
+}
+#f-status:focus { outline: none; border-color: #e2511a; }
+
 /* Multi-select dropdown */
 .multiselect { position: relative; width: 100%; }
 

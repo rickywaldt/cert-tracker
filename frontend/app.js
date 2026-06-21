@@ -1,36 +1,30 @@
 // ── Config ────────────────────────────────────────────────────────────────────
-const API      = '';
+const API = '';
 const PER_PAGE = 48;
 
 // ── State ─────────────────────────────────────────────────────────────────────
-let currentPage    = 1;
-let totalResults   = 0;
+let currentPage = 1;
+let totalResults = 0;
 let selectedPerson = null;
-let allPeople      = [];
+let allPeople = [];
 let searchTimer;
 let personTimer;
 
-// ── Multi-select state ────────────────────────────────────────────────────────
-const selected = { country: new Set(), issuer: new Set(), status: new Set() };
-
-// Static options for status (not from API)
-const STATUS_OPTIONS = [
-  { value: 'active',        label: 'Active' },
-  { value: 'expired',       label: 'Expired' },
-  { value: 'expiring_soon', label: 'Expiring within 3 months' },
-];
+// ── Multi-select state (country + issuer only) ────────────────────────────────
+const selected = { country: new Set(), issuer: new Set() };
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────
-const grid         = document.getElementById('grid');
-const loading      = document.getElementById('loading');
-const errorEl      = document.getElementById('error');
-const countEl      = document.getElementById('result-count');
-const paginationEl = document.getElementById('pagination');
-const scrapeInfo   = document.getElementById('scrape-info');
-const fQ           = document.getElementById('f-q');
-const fPerson      = document.getElementById('f-person');
-const suggestions  = document.getElementById('f-person-suggestions');
-const clearBtn     = document.getElementById('clear-btn');
+const grid        = document.getElementById('grid');
+const loading     = document.getElementById('loading');
+const errorEl     = document.getElementById('error');
+const countEl     = document.getElementById('result-count');
+const paginationEl= document.getElementById('pagination');
+const scrapeInfo  = document.getElementById('scrape-info');
+const fQ          = document.getElementById('f-q');
+const fStatus     = document.getElementById('f-status');
+const fPerson     = document.getElementById('f-person');
+const suggestions = document.getElementById('f-person-suggestions');
+const clearBtn    = document.getElementById('clear-btn');
 
 // ── Multi-select component ────────────────────────────────────────────────────
 function createMultiSelect(containerId, key, placeholder) {
@@ -45,8 +39,7 @@ function createMultiSelect(containerId, key, placeholder) {
       label.textContent = placeholder;
       label.classList.remove('has-selection');
     } else {
-      // Show selected values joined, truncated
-      const values = [...sel];
+      const values  = [...sel];
       const display = values.length <= 2
         ? values.join(', ')
         : `${values.slice(0, 2).join(', ')} +${values.length - 2}`;
@@ -55,36 +48,26 @@ function createMultiSelect(containerId, key, placeholder) {
     }
   }
 
-  function open() {
-    panel.classList.add('is-open');
-    trigger.classList.add('is-active');
-  }
-
-  function close() {
-    panel.classList.remove('is-open');
-    trigger.classList.remove('is-active');
-  }
-
-  function toggle() {
-    panel.classList.contains('is-open') ? close() : open();
-  }
+  function open()   { panel.classList.add('is-open');    trigger.classList.add('is-active'); }
+  function close()  { panel.classList.remove('is-open'); trigger.classList.remove('is-active'); }
+  function toggle() { panel.classList.contains('is-open') ? close() : open(); }
 
   function addOption(value, optionLabel) {
     const div = document.createElement('div');
     div.className = 'multiselect__option';
     div.setAttribute('role', 'option');
 
-    const cb = document.createElement('input');
-    cb.type  = 'checkbox';
-    cb.value = value;
-    cb.id    = `${containerId}-${value}`;
-    cb.checked = selected[key].has(value);
+    const cb    = document.createElement('input');
+    cb.type     = 'checkbox';
+    cb.value    = value;
+    cb.id       = `${containerId}-${value}`;
+    cb.checked  = selected[key].has(value);
 
-    const lbl = document.createElement('label');
-    lbl.htmlFor    = cb.id;
-    lbl.textContent = optionLabel;
-    lbl.style.cursor = 'pointer';
-    lbl.style.flex = '1';
+    const lbl         = document.createElement('label');
+    lbl.htmlFor       = cb.id;
+    lbl.textContent   = optionLabel;
+    lbl.style.cursor  = 'pointer';
+    lbl.style.flex    = '1';
 
     if (cb.checked) div.classList.add('is-checked');
 
@@ -120,31 +103,19 @@ function createMultiSelect(containerId, key, placeholder) {
     updateLabel();
   }
 
-  // Toggle on trigger click
   trigger.addEventListener('click', (e) => { e.stopPropagation(); toggle(); });
-
-  // Close when clicking outside
-  document.addEventListener('click', (e) => {
-    if (!container.contains(e.target)) close();
-  });
-
-  // Close on Escape
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') close();
-  });
+  document.addEventListener('click', (e) => { if (!container.contains(e.target)) close(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
 
   return { populate, reset, close };
 }
 
-// Instantiate the three multi-selects
+// Instantiate the two multi-selects
 const msCountry = createMultiSelect('ms-country', 'country', 'All countries');
 const msIssuer  = createMultiSelect('ms-issuer',  'issuer',  'All issuers');
-const msStatus  = createMultiSelect('ms-status',  'status',  'All statuses');
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 async function boot() {
-  // Populate status options immediately (static)
-  msStatus.populate(STATUS_OPTIONS);
   await Promise.all([loadMeta(), loadPeople(), loadScrapeInfo()]);
   await loadBadges();
 }
@@ -196,12 +167,14 @@ async function loadBadges(page = 1) {
 
   const params = new URLSearchParams();
 
-  // Multi-select: pass comma-separated values
+  // Multi-select: comma-separated
   if (selected.country.size) params.set('country', [...selected.country].join(','));
   if (selected.issuer.size)  params.set('issuer',  [...selected.issuer].join(','));
-  if (selected.status.size)  params.set('status',  [...selected.status].join(','));
 
-  if (fQ.value.trim())  params.set('q',         fQ.value.trim());
+  // Single-select status
+  if (fStatus.value) params.set('status', fStatus.value);
+
+  if (fQ.value.trim())  params.set('q', fQ.value.trim());
   if (selectedPerson)   params.set('person_id', selectedPerson.id);
   params.set('page',     page);
   params.set('per_page', PER_PAGE);
@@ -232,7 +205,7 @@ function renderBadges(badges) {
 }
 
 function makeCard(b) {
-  const card     = document.createElement('div');
+  const card   = document.createElement('div');
   card.className = 'card';
   const status   = badgeStatus(b.expires_at);
   const imageUrl = b.image_url
@@ -262,11 +235,11 @@ function makeCard(b) {
 
 function badgeStatus(expiresAt) {
   if (!expiresAt) return { cls: 'noexpiry', label: 'No expiry' };
-  const exp         = new Date(expiresAt);
-  const now         = new Date();
+  const exp        = new Date(expiresAt);
+  const now        = new Date();
   const threeMonths = new Date(); threeMonths.setMonth(threeMonths.getMonth() + 3);
-  if (exp < now)          return { cls: 'expired', label: 'Expired' };
-  if (exp < threeMonths)  return { cls: 'soon',    label: 'Expiring soon' };
+  if (exp < now)        return { cls: 'expired', label: 'Expired' };
+  if (exp < threeMonths) return { cls: 'soon',    label: 'Expiring soon' };
   return { cls: 'active', label: 'Active' };
 }
 
@@ -333,11 +306,11 @@ function showSuggestions(q) {
   if (!matches.length) { suggestions.classList.remove('open'); return; }
 
   matches.forEach(p => {
-    const li   = document.createElement('li');
-    const idx  = p.name.toLowerCase().indexOf(q.toLowerCase());
-    const pre  = escapeHTML(p.name.slice(0, idx));
-    const match= escapeHTML(p.name.slice(idx, idx + q.length));
-    const post = escapeHTML(p.name.slice(idx + q.length));
+    const li  = document.createElement('li');
+    const idx = p.name.toLowerCase().indexOf(q.toLowerCase());
+    const pre   = escapeHTML(p.name.slice(0, idx));
+    const match = escapeHTML(p.name.slice(idx, idx + q.length));
+    const post  = escapeHTML(p.name.slice(idx + q.length));
     li.innerHTML = `${pre}<strong>${match}</strong>${post}`;
 
     li.addEventListener('mousedown', e => {
@@ -377,6 +350,9 @@ fPerson.addEventListener('keydown', e => {
   }
 });
 
+// ── Status filter ─────────────────────────────────────────────────────────────
+fStatus.addEventListener('change', () => loadBadges(1));
+
 // ── Keyword search ────────────────────────────────────────────────────────────
 fQ.addEventListener('input', () => {
   clearTimeout(searchTimer);
@@ -387,7 +363,7 @@ fQ.addEventListener('input', () => {
 clearBtn.addEventListener('click', () => {
   msCountry.reset();
   msIssuer.reset();
-  msStatus.reset();
+  fStatus.value  = '';
   fQ.value       = '';
   fPerson.value  = '';
   selectedPerson = null;

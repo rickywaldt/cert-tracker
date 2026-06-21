@@ -7,73 +7,72 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div class="app">
-    <header>
-      <h1>ITQ Certification Tracker</h1>
-      <p class="subtitle">Browse certifications held by ITQ'ers</p>
-      <div id="scrape-info" class="scrape-info"></div>
-    </header>
+<div class="app">
+  <header>
+    <h1>ITQ Certification Tracker</h1>
+    <p class="subtitle">Browse certifications held by ITQ'ers</p>
+    <div id="scrape-info" class="scrape-info"></div>
+  </header>
 
-    <section class="filters">
-      <div class="filter-group">
-        <label>Country</label>
-        <div class="multiselect" id="ms-country">
-          <button type="button" class="multiselect__trigger" aria-haspopup="listbox">
-            <span class="multiselect__label">All countries</span>
-            <span class="multiselect__arrow">▾</span>
-          </button>
-          <div class="multiselect__panel" role="listbox" aria-multiselectable="true"></div>
-        </div>
+  <section class="filters">
+    <div class="filter-group">
+      <label>Country</label>
+      <div class="multiselect" id="ms-country">
+        <button type="button" class="multiselect__trigger" aria-haspopup="listbox">
+          <span class="multiselect__label">All countries</span>
+          <span class="multiselect__arrow">▾</span>
+        </button>
+        <div class="multiselect__panel" role="listbox" aria-multiselectable="true"></div>
       </div>
-
-      <div class="filter-group">
-        <label>Issuer</label>
-        <div class="multiselect" id="ms-issuer">
-          <button type="button" class="multiselect__trigger" aria-haspopup="listbox">
-            <span class="multiselect__label">All issuers</span>
-            <span class="multiselect__arrow">▾</span>
-          </button>
-          <div class="multiselect__panel" role="listbox" aria-multiselectable="true"></div>
-        </div>
-      </div>
-
-      <div class="filter-group">
-        <label>Status</label>
-        <div class="multiselect" id="ms-status">
-          <button type="button" class="multiselect__trigger" aria-haspopup="listbox">
-            <span class="multiselect__label">All statuses</span>
-            <span class="multiselect__arrow">▾</span>
-          </button>
-          <div class="multiselect__panel" role="listbox" aria-multiselectable="true"></div>
-        </div>
-      </div>
-
-      <div class="filter-group filter-group--person">
-        <label for="f-person">ITQ'er</label>
-        <div class="autocomplete-wrap">
-          <input type="text" id="f-person" placeholder="e.g. Kelsey Hightower" autocomplete="off">
-          <ul id="f-person-suggestions" class="suggestions"></ul>
-        </div>
-      </div>
-
-      <div class="filter-group filter-group--search">
-        <label for="f-q">Search</label>
-        <input type="text" id="f-q" placeholder="e.g. Kubestronaut, RHCE, Knight, AWS…">
-      </div>
-
-      <button id="clear-btn" class="btn-secondary">Clear filters</button>
-    </section>
-
-    <div class="results-bar">
-      <span id="result-count"></span>
-      <div class="pagination" id="pagination"></div>
     </div>
 
-    <div id="grid" class="grid"></div>
+    <div class="filter-group">
+      <label>Issuer</label>
+      <div class="multiselect" id="ms-issuer">
+        <button type="button" class="multiselect__trigger" aria-haspopup="listbox">
+          <span class="multiselect__label">All issuers</span>
+          <span class="multiselect__arrow">▾</span>
+        </button>
+        <div class="multiselect__panel" role="listbox" aria-multiselectable="true"></div>
+      </div>
+    </div>
 
-    <div id="loading" class="loading" style="display:none">Loading…</div>
-    <div id="error" class="error" style="display:none"></div>
+    <div class="filter-group">
+      <label for="f-status">Status</label>
+      <select id="f-status">
+        <option value="">All statuses</option>
+        <option value="active">Active</option>
+        <option value="expired">Expired</option>
+        <option value="expiring_soon">Expiring within 3 months</option>
+      </select>
+    </div>
+
+    <div class="filter-group filter-group--person">
+      <label for="f-person">ITQ'er</label>
+      <div class="autocomplete-wrap">
+        <input type="text" id="f-person" placeholder="e.g. Kelsey Hightower" autocomplete="off">
+        <ul id="f-person-suggestions" class="suggestions"></ul>
+      </div>
+    </div>
+
+    <div class="filter-group filter-group--search">
+      <label for="f-q">Search</label>
+      <input type="text" id="f-q" placeholder="e.g. Kubestronaut, RHCE, Knight, AWS…">
+    </div>
+
+    <button id="clear-btn" class="btn-secondary">Clear filters</button>
+  </section>
+
+  <div class="results-bar">
+    <span id="result-count"></span>
+    <div class="pagination" id="pagination"></div>
   </div>
-  <script src="app.js"></script>
+
+  <div id="grid" class="grid"></div>
+
+  <div id="loading" class="loading" style="display:none">Loading…</div>
+  <div id="error" class="error" style="display:none"></div>
+</div>
+<script src="app.js"></script>
 </body>
 </html>
