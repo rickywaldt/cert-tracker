@@ -10,7 +10,7 @@ body {
 .app { max-width: 1400px; margin: 0 auto; padding: 1.5rem; }
 
 header { margin-bottom: 1.5rem; }
-header h1 { font-size: 1.8rem; font-weight: 700; }
+header h1 { font-size: 1.8rem; font-weight: 700; color: #e2511a; }
 header .subtitle { color: #666; margin-top: 0.25rem; }
 .scrape-info { font-size: 0.8rem; color: #999; margin-top: 0.4rem; }
 
@@ -30,7 +30,7 @@ header .subtitle { color: #666; margin-top: 0.25rem; }
   font-size: 0.9rem; background: #fff; width: 100%;
 }
 .filter-group select:focus, .filter-group input:focus {
-  outline: none; border-color: #e2511a;
+  outline: none; border-color: #3b82f6;
 }
 .btn-secondary {
   padding: 0.45rem 1rem; border: 1px solid #ddd; border-radius: 5px;
