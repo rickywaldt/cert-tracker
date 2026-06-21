@@ -53,7 +53,7 @@ header .subtitle { color: #666; margin-top: 0.25rem; }
   font-family: inherit;
   line-height: normal;
 }
-#f-status:focus { outline: none; border-color: #e2511a; }
+#f-status:focus { outline: none; border-color: #3b82f6; }
 
 /* Multi-select dropdown */
 .multiselect { position: relative; width: 100%; }
@@ -66,13 +66,13 @@ header .subtitle { color: #666; margin-top: 0.25rem; }
   font-size: 0.9rem; color: #222;
   text-align: left; gap: 0.5rem;
 }
-.multiselect__trigger:focus { outline: none; border-color: #e2511a; }
-.multiselect__trigger.is-active { border-color: #e2511a; }
+.multiselect__trigger:focus { outline: none; border-color: #3b82f6; }
+.multiselect__trigger.is-active { border-color: #3b82f6; }
 
 .multiselect__label {
   flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.multiselect__label.has-selection { color: #e2511a; font-weight: 500; }
+.multiselect__label.has-selection { font-weight: 500; }
 
 .multiselect__arrow { font-size: 0.75rem; color: #888; flex-shrink: 0; transition: transform 0.15s; }
 .multiselect__trigger.is-active .multiselect__arrow { transform: rotate(180deg); }
