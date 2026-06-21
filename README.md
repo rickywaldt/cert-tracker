@@ -3,6 +3,8 @@
 A self-hosted web app that scrapes all Credly badges earned by ITQ'ers and presents them in a searchable, filterable overview.
 Inspired by [Florian Casse's Credly Scraper tool](https://github.com/FlorianCasse/credly-scraper).
 
+Live at: <https://cert-tracker.nusanative.com/>
+
 ## What it does
 
 - Scrapes the [ITQ team page](https://itq.eu/meet-our-team/) to discover all employees and their office/country
