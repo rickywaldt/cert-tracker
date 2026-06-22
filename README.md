@@ -226,6 +226,8 @@ The `docker-compose.yaml` provides hardcoded development values for all of these
 
 ## TODO
 
+- Query parameters in url
+- Email as unique keys (avoid name collisions)
 - CSV export
 - Badge expiry notification
 - Leaderboard
