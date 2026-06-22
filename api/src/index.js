@@ -149,7 +149,7 @@ app.get('/api/people', async (req, res) => {
       params.push(`%${q}%`);
       sql += ` AND name ILIKE $1`;
     }
-    sql += ` ORDER BY name LIMIT 20`;
+    sql += ` ORDER BY name`;
     const result = await pool.query(sql, params);
     res.json(result.rows);
   } catch (err) {
