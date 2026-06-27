@@ -165,7 +165,7 @@ async function loadScrapeInfo() {
     }
     if (latest.people_total != null && latest.badges_total != null) {
       statsBar.textContent =
-        `${latest.people_total} ITQ'ers · ${latest.badges_total} badges tracked`;
+        `${latest.people_total} ITQ'ers with at least 1 badge`;
     }
   } catch (e) {
     console.warn('Could not load scrape info:', e.message);
