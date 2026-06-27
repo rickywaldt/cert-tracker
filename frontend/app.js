@@ -1,12 +1,12 @@
 // ── Config ────────────────────────────────────────────────────────────────────
-const API     = '';
+const API = '';
 const PER_PAGE = 48;
 
 // ── State ─────────────────────────────────────────────────────────────────────
-let currentPage   = 1;
-let totalResults  = 0;
+let currentPage = 1;
+let totalResults = 0;
 let selectedPerson = null;
-let allPeople     = [];
+let allPeople = [];
 let searchTimer;
 let personTimer;
 
@@ -40,7 +40,7 @@ function createMultiSelect(containerId, key, placeholder) {
       label.textContent = placeholder;
       label.classList.remove('has-selection');
     } else {
-      const values  = [...sel];
+      const values = [...sel];
       const display = values.length <= 2
         ? values.join(', ')
         : `${values.slice(0, 2).join(', ')} +${values.length - 2}`;
@@ -58,15 +58,15 @@ function createMultiSelect(containerId, key, placeholder) {
     div.className = 'multiselect__option';
     div.setAttribute('role', 'option');
 
-    const cb    = document.createElement('input');
-    cb.type     = 'checkbox';
-    cb.value    = value;
-    cb.id       = `${containerId}-${value}`;
-    cb.checked  = selected[key].has(value);
+    const cb = document.createElement('input');
+    cb.type    = 'checkbox';
+    cb.value   = value;
+    cb.id      = `${containerId}-${value}`;
+    cb.checked = selected[key].has(value);
 
-    const lbl        = document.createElement('label');
-    lbl.htmlFor      = cb.id;
-    lbl.textContent  = optionLabel;
+    const lbl = document.createElement('label');
+    lbl.htmlFor    = cb.id;
+    lbl.textContent = optionLabel;
     lbl.style.cursor = 'pointer';
     lbl.style.flex   = '1';
 
@@ -74,7 +74,7 @@ function createMultiSelect(containerId, key, placeholder) {
 
     cb.addEventListener('change', () => {
       if (cb.checked) { selected[key].add(value);    div.classList.add('is-checked'); }
-      else            { selected[key].delete(value);  div.classList.remove('is-checked'); }
+      else            { selected[key].delete(value); div.classList.remove('is-checked'); }
       updateLabel();
       loadBadges(1);
     });
@@ -100,7 +100,7 @@ function createMultiSelect(containerId, key, placeholder) {
   }
 
   trigger.addEventListener('click', (e) => { e.stopPropagation(); toggle(); });
-  document.addEventListener('click', (e) => { if (!container.contains(e.target)) close(); });
+  document.addEventListener('click',   (e) => { if (!container.contains(e.target)) close(); });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
 
   return { populate, reset, close };
@@ -127,7 +127,7 @@ async function loadMeta() {
     fType.innerHTML = '<option value="">All types</option>';
     (type_categories || []).forEach(tc => {
       const opt = document.createElement('option');
-      opt.value = tc;
+      opt.value       = tc;
       opt.textContent = tc;
       fType.appendChild(opt);
     });
@@ -147,31 +147,33 @@ async function loadPeople() {
   }
 }
 
-// ── Show last scrape time ─────────────────────────────────────────────────────
+// ── Load scrape info ──────────────────────────────────────────────────────────
 async function loadScrapeInfo() {
   try {
-    const res = await fetch(`${API}/api/scrape-status`);
+    const res = await fetch(`${API}/api/scrape-info`);
     if (!res.ok) return;
-    const runs = await res.json();
-    if (runs.length && runs[0].finished_at) {
-      const d = new Date(runs[0].finished_at);
-      scrapeInfo.textContent =
-        `Last updated: ${d.toLocaleDateString()} ${d.toLocaleTimeString()} · ` +
-        `${runs[0].people_total} people · ${runs[0].badges_total} badges`;
+    const info = await res.json();
+    if (scrapeInfo && info.last_run) {
+      const d = new Date(info.last_run);
+      scrapeInfo.textContent = `Last scraped: ${d.toLocaleDateString('en-GB', {
+        day: 'numeric', month: 'short', year: 'numeric'
+      })}`;
     }
-  } catch { /* silent */ }
+  } catch (e) {
+    console.warn('Could not load scrape info:', e.message);
+  }
 }
 
 // ── Load badges ───────────────────────────────────────────────────────────────
-async function loadBadges(page = 1) {
+async function loadBadges(page = currentPage) {
   currentPage = page;
   showLoading(true);
   errorEl.style.display = 'none';
 
   const params = new URLSearchParams();
 
-  if (selected.country.size) params.set('country', [...selected.country].join(','));
-  if (selected.issuer.size)  params.set('issuer',  [...selected.issuer].join(','));
+  if (selected.country.size) params.set('country',       [...selected.country].join(','));
+  if (selected.issuer.size)  params.set('issuer',        [...selected.issuer].join(','));
   if (fStatus.value)         params.set('status',        fStatus.value);
   if (fType.value)           params.set('type_category', fType.value);
   if (fQ.value.trim())       params.set('q',             fQ.value.trim());
@@ -205,7 +207,7 @@ function renderBadges(badges) {
 }
 
 function makeCard(b) {
-  const card     = document.createElement('div');
+  const card   = document.createElement('div');
   card.className = 'card';
   const status   = badgeStatus(b.expires_at);
   const imageUrl = b.image_url
@@ -239,4 +241,176 @@ function badgeStatus(expiresAt) {
   const exp        = new Date(expiresAt);
   const now        = new Date();
   const threeMonths = new Date(); threeMonths.setMonth(threeMonths.getMonth() + 3);
-  if (exp < now)         return { cls: 'expired', label: '
+  if (exp < now)        return { cls: 'expired',  label: 'Expired' };
+  if (exp < threeMonths) return { cls: 'expiring', label: 'Expiring soon' };
+  return { cls: 'active', label: 'Active' };
+}
+
+// ── Results bar ───────────────────────────────────────────────────────────────
+function renderResultsBar(total, page) {
+  const from = Math.min((page - 1) * PER_PAGE + 1, total);
+  const to   = Math.min(page * PER_PAGE, total);
+  countEl.textContent = total === 0
+    ? 'No results'
+    : `Showing ${from}–${to} of ${total} badge${total !== 1 ? 's' : ''}`;
+}
+
+// ── Pagination ────────────────────────────────────────────────────────────────
+function renderPagination(total, page) {
+  const pages = Math.ceil(total / PER_PAGE);
+  paginationEl.innerHTML = '';
+  if (pages <= 1) return;
+
+  const mkBtn = (label, targetPage, disabled = false, active = false) => {
+    const btn = document.createElement('button');
+    btn.textContent = label;
+    btn.disabled    = disabled;
+    if (active) btn.classList.add('active');
+    btn.addEventListener('click', () => loadBadges(targetPage));
+    return btn;
+  };
+
+  paginationEl.appendChild(mkBtn('← Prev', page - 1, page === 1));
+
+  const range = pageRange(page, pages);
+  let prev = null;
+  range.forEach(p => {
+    if (prev !== null && p - prev > 1) {
+      const dots = document.createElement('span');
+      dots.textContent = '…';
+      paginationEl.appendChild(dots);
+    }
+    paginationEl.appendChild(mkBtn(String(p), p, false, p === page));
+    prev = p;
+  });
+
+  paginationEl.appendChild(mkBtn('Next →', page + 1, page === pages));
+}
+
+function pageRange(current, total) {
+  const delta = 2;
+  const range = [];
+  for (let i = Math.max(1, current - delta); i <= Math.min(total, current + delta); i++) {
+    range.push(i);
+  }
+  if (range[0] > 1) range.unshift(1);
+  if (range[range.length - 1] < total) range.push(total);
+  return range;
+}
+
+// ── Person autocomplete ───────────────────────────────────────────────────────
+fPerson.addEventListener('input', () => {
+  clearTimeout(personTimer);
+  const q = fPerson.value.trim().toLowerCase();
+  if (!q) { hideSuggestions(); return; }
+  personTimer = setTimeout(() => showSuggestions(q), 150);
+});
+
+fPerson.addEventListener('keydown', e => {
+  const items = suggestions.querySelectorAll('li');
+  const active = suggestions.querySelector('li.active');
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    const next = active ? active.nextElementSibling : items[0];
+    if (next) { active?.classList.remove('active'); next.classList.add('active'); }
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    const prev = active ? active.previousElementSibling : null;
+    if (prev) { active?.classList.remove('active'); prev.classList.add('active'); }
+  } else if (e.key === 'Enter') {
+    e.preventDefault();
+    if (active) selectPerson({ id: active.dataset.id, name: active.dataset.name });
+  } else if (e.key === 'Escape') {
+    hideSuggestions();
+  }
+});
+
+document.addEventListener('click', e => {
+  if (!fPerson.contains(e.target) && !suggestions.contains(e.target)) hideSuggestions();
+});
+
+function showSuggestions(q) {
+  const matches = allPeople.filter(p => p.name.toLowerCase().includes(q)).slice(0, 8);
+  if (!matches.length) { hideSuggestions(); return; }
+  suggestions.innerHTML = '';
+  matches.forEach(p => {
+    const li = document.createElement('li');
+    li.textContent  = p.name;
+    li.dataset.id   = p.id;
+    li.dataset.name = p.name;
+    li.addEventListener('click', () => selectPerson(p));
+    suggestions.appendChild(li);
+  });
+  suggestions.style.display = 'block';
+}
+
+function hideSuggestions() {
+  suggestions.style.display = 'none';
+  suggestions.innerHTML = '';
+}
+
+function selectPerson(p) {
+  selectedPerson  = p;
+  fPerson.value   = p.name;
+  hideSuggestions();
+  loadBadges(1);
+}
+
+// ── Clear filters ─────────────────────────────────────────────────────────────
+clearBtn.addEventListener('click', () => {
+  fQ.value          = '';
+  fStatus.value     = '';
+  fType.value       = '';
+  fPerson.value     = '';
+  selectedPerson    = null;
+  msCountry.reset();
+  msIssuer.reset();
+  hideSuggestions();
+  loadBadges(1);
+});
+
+// ── Simple filters ────────────────────────────────────────────────────────────
+fQ.addEventListener('input', () => {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => loadBadges(1), 300);
+});
+
+fStatus.addEventListener('change', () => loadBadges(1));
+fType.addEventListener('change',   () => loadBadges(1));
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function showLoading(on) {
+  loading.style.display = on ? 'flex' : 'none';
+  if (on) grid.innerHTML = '';
+}
+
+function showError(msg) {
+  errorEl.textContent    = msg;
+  errorEl.style.display  = 'block';
+  grid.innerHTML         = '';
+  paginationEl.innerHTML = '';
+  countEl.textContent    = '';
+}
+
+function formatDate(iso) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function escapeHTML(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function escapeAttr(str) {
+  if (!str) return '';
+  return String(str).replace(/"/g, '&quot;');
+}
+
+// ── Start ─────────────────────────────────────────────────────────────────────
+boot();
