@@ -37,7 +37,8 @@ header .subtitle { color: #666; margin-top: 0.25rem; }
 }
 .btn-secondary:hover { background: #f5f5f5; }
 
-/* Status single-select — match multiselect trigger appearance */
+/* Type + Status single-selects — match multiselect trigger appearance */
+#f-type,
 #f-status {
   appearance: none;
   -webkit-appearance: none;
@@ -53,6 +54,7 @@ header .subtitle { color: #666; margin-top: 0.25rem; }
   font-family: inherit;
   line-height: normal;
 }
+#f-type:focus,
 #f-status:focus { outline: none; border-color: #3b82f6; }
 
 /* Multi-select dropdown */
@@ -132,30 +134,55 @@ header .subtitle { color: #666; margin-top: 0.25rem; }
   box-shadow: 0 4px 12px rgba(0,0,0,0.12);
   display: none;
 }
-.suggestions.open { display: block; }
 .suggestions li {
   padding: 0.5rem 0.75rem;
   cursor: pointer;
-  font-size: 0.88rem;
+  font-size: 0.85rem;
   color: #333;
-  border-bottom: 1px solid #f0f0f0;
+  background: #fff;
 }
-.suggestions li:last-child { border-bottom: none; }
 .suggestions li:hover,
-.suggestions li.active { background: #fef3ee; color: #e2511a; }
+.suggestions li.active { background: #fef3ee; }
 
 /* Results bar */
 .results-bar {
-  display: flex; justify-content: space-between; align-items: center;
-  margin-bottom: 0.75rem; font-size: 0.9rem; color: #555;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  min-height: 2rem;
 }
-.pagination { display: flex; gap: 0.5rem; }
+.results-bar--bottom {
+  margin-top: 1.5rem;
+  margin-bottom: 0;
+}
+
+#result-count,
+#result-count-bottom {
+  font-size: 0.85rem;
+  color: #666;
+}
+
+.stats-bar {
+  font-size: 0.8rem;
+  color: #999;
+  margin-bottom: 0.5rem;
+}
+
+/* Pagination */
+.pagination {
+  display: flex; flex-wrap: wrap; gap: 0.35rem; align-items: center;
+}
 .pagination button {
   padding: 0.3rem 0.65rem; border: 1px solid #ddd; border-radius: 4px;
-  background: #fff; cursor: pointer; font-size: 0.85rem;
+  background: #fff; cursor: pointer; font-size: 0.85rem; color: #333;
 }
+.pagination button:hover:not(:disabled) { background: #f5f5f5; }
 .pagination button.active { background: #e2511a; color: #fff; border-color: #e2511a; }
 .pagination button:disabled { opacity: 0.4; cursor: default; }
+.pagination span { color: #999; font-size: 0.85rem; padding: 0 0.2rem; }
 
 /* Badge cards grid */
 .grid {
@@ -189,10 +216,16 @@ header .subtitle { color: #666; margin-top: 0.25rem; }
   display: inline-block; padding: 0.15rem 0.45rem; border-radius: 3px;
   font-size: 0.7rem; font-weight: 600; text-transform: uppercase; margin-bottom: 0.3rem;
 }
-.badge-status--active  { background: #d4edda; color: #155724; }
-.badge-status--expired { background: #f8d7da; color: #721c24; }
-.badge-status--soon    { background: #fff3cd; color: #856404; }
-.badge-status--noexpiry{ background: #e8e8e8; color: #555; }
+.badge-status--active   { background: #d4edda; color: #155724; }
+.badge-status--expired  { background: #f8d7da; color: #721c24; }
+.badge-status--expiring { background: #fff3cd; color: #856404; }
+.badge-status--noexpiry { background: #e8e8e8; color: #555; }
+
+.badge-type {
+  display: inline-block; padding: 0.12rem 0.4rem; border-radius: 3px;
+  font-size: 0.68rem; font-weight: 600; text-transform: uppercase;
+  background: #e8f0fe; color: #1a56db; margin-left: 0.25rem;
+}
 
 .loading { text-align: center; padding: 3rem; color: #999; font-size: 1rem; }
 .error { background: #f8d7da; color: #721c24; padding: 1rem; border-radius: 6px; margin-top: 1rem; }

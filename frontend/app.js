@@ -14,18 +14,21 @@ let personTimer;
 const selected = { country: new Set(), issuer: new Set() };
 
 // ── DOM refs ──────────────────────────────────────────────────────────────────
-const grid        = document.getElementById('grid');
-const loading     = document.getElementById('loading');
-const errorEl     = document.getElementById('error');
-const countEl     = document.getElementById('result-count');
-const paginationEl = document.getElementById('pagination');
-const scrapeInfo  = document.getElementById('scrape-info');
-const fQ          = document.getElementById('f-q');
-const fStatus     = document.getElementById('f-status');
-const fType       = document.getElementById('f-type');
-const fPerson     = document.getElementById('f-person');
-const suggestions = document.getElementById('f-person-suggestions');
-const clearBtn    = document.getElementById('clear-btn');
+const grid           = document.getElementById('grid');
+const loading        = document.getElementById('loading');
+const errorEl        = document.getElementById('error');
+const countEl        = document.getElementById('result-count');
+const countBottomEl  = document.getElementById('result-count-bottom');
+const paginationEl   = document.getElementById('pagination');
+const paginationBotEl= document.getElementById('pagination-bottom');
+const statsBar       = document.getElementById('stats-bar');
+const scrapeInfo     = document.getElementById('scrape-info');
+const fQ             = document.getElementById('f-q');
+const fStatus        = document.getElementById('f-status');
+const fType          = document.getElementById('f-type');
+const fPerson        = document.getElementById('f-person');
+const suggestions    = document.getElementById('f-person-suggestions');
+const clearBtn       = document.getElementById('clear-btn');
 
 // ── Multi-select component ────────────────────────────────────────────────────
 function createMultiSelect(containerId, key, placeholder) {
@@ -65,8 +68,8 @@ function createMultiSelect(containerId, key, placeholder) {
     cb.checked = selected[key].has(value);
 
     const lbl = document.createElement('label');
-    lbl.htmlFor    = cb.id;
-    lbl.textContent = optionLabel;
+    lbl.htmlFor      = cb.id;
+    lbl.textContent  = optionLabel;
     lbl.style.cursor = 'pointer';
     lbl.style.flex   = '1';
 
@@ -123,7 +126,6 @@ async function loadMeta() {
     const { countries, issuers, type_categories } = await res.json();
     msCountry.populate(countries.map(c => ({ value: c, label: c })));
     msIssuer.populate(issuers.map(i => ({ value: i, label: i })));
-    // Populate type dropdown dynamically
     fType.innerHTML = '<option value="">All types</option>';
     (type_categories || []).forEach(tc => {
       const opt = document.createElement('option');
@@ -147,17 +149,23 @@ async function loadPeople() {
   }
 }
 
-// ── Load scrape info ──────────────────────────────────────────────────────────
+// ── Load scrape info (last run date + totals) ─────────────────────────────────
 async function loadScrapeInfo() {
   try {
-    const res = await fetch(`${API}/api/scrape-info`);
+    const res = await fetch(`${API}/api/scrape-status`);
     if (!res.ok) return;
-    const info = await res.json();
-    if (scrapeInfo && info.last_run) {
-      const d = new Date(info.last_run);
+    const runs = await res.json();
+    if (!runs.length) return;
+    const latest = runs[0];
+    if (latest.finished_at) {
+      const d = new Date(latest.finished_at);
       scrapeInfo.textContent = `Last scraped: ${d.toLocaleDateString('en-GB', {
         day: 'numeric', month: 'short', year: 'numeric'
       })}`;
+    }
+    if (latest.people_total != null && latest.badges_total != null) {
+      statsBar.textContent =
+        `${latest.people_total} ITQ'ers · ${latest.badges_total} badges tracked`;
     }
   } catch (e) {
     console.warn('Could not load scrape info:', e.message);
@@ -238,10 +246,10 @@ function makeCard(b) {
 
 function badgeStatus(expiresAt) {
   if (!expiresAt) return { cls: 'noexpiry', label: 'No expiry' };
-  const exp        = new Date(expiresAt);
-  const now        = new Date();
+  const exp         = new Date(expiresAt);
+  const now         = new Date();
   const threeMonths = new Date(); threeMonths.setMonth(threeMonths.getMonth() + 3);
-  if (exp < now)        return { cls: 'expired',  label: 'Expired' };
+  if (exp < now)         return { cls: 'expired',  label: 'Expired' };
   if (exp < threeMonths) return { cls: 'expiring', label: 'Expiring soon' };
   return { cls: 'active', label: 'Active' };
 }
@@ -250,41 +258,50 @@ function badgeStatus(expiresAt) {
 function renderResultsBar(total, page) {
   const from = Math.min((page - 1) * PER_PAGE + 1, total);
   const to   = Math.min(page * PER_PAGE, total);
-  countEl.textContent = total === 0
+  const text = total === 0
     ? 'No results'
     : `Showing ${from}–${to} of ${total} badge${total !== 1 ? 's' : ''}`;
+  countEl.textContent       = text;
+  countBottomEl.textContent = text;
 }
 
 // ── Pagination ────────────────────────────────────────────────────────────────
 function renderPagination(total, page) {
   const pages = Math.ceil(total / PER_PAGE);
-  paginationEl.innerHTML = '';
-  if (pages <= 1) return;
 
-  const mkBtn = (label, targetPage, disabled = false, active = false) => {
-    const btn = document.createElement('button');
-    btn.textContent = label;
-    btn.disabled    = disabled;
-    if (active) btn.classList.add('active');
-    btn.addEventListener('click', () => loadBadges(targetPage));
-    return btn;
-  };
+  [paginationEl, paginationBotEl].forEach(container => {
+    container.innerHTML = '';
+    if (pages <= 1) return;
 
-  paginationEl.appendChild(mkBtn('← Prev', page - 1, page === 1));
+    const mkBtn = (label, targetPage, disabled = false, active = false) => {
+      const btn = document.createElement('button');
+      btn.textContent = label;
+      btn.disabled    = disabled;
+      if (active) btn.classList.add('active');
+      btn.addEventListener('click', () => {
+        loadBadges(targetPage);
+        // Scroll to top when using bottom pagination
+        if (container === paginationBotEl) window.scrollTo({ top: 0, behavior: 'smooth' });
+      });
+      return btn;
+    };
 
-  const range = pageRange(page, pages);
-  let prev = null;
-  range.forEach(p => {
-    if (prev !== null && p - prev > 1) {
-      const dots = document.createElement('span');
-      dots.textContent = '…';
-      paginationEl.appendChild(dots);
-    }
-    paginationEl.appendChild(mkBtn(String(p), p, false, p === page));
-    prev = p;
+    container.appendChild(mkBtn('← Prev', page - 1, page === 1));
+
+    const range = pageRange(page, pages);
+    let prev = null;
+    range.forEach(p => {
+      if (prev !== null && p - prev > 1) {
+        const dots = document.createElement('span');
+        dots.textContent = '…';
+        container.appendChild(dots);
+      }
+      container.appendChild(mkBtn(String(p), p, false, p === page));
+      prev = p;
+    });
+
+    container.appendChild(mkBtn('Next →', page + 1, page === pages));
   });
-
-  paginationEl.appendChild(mkBtn('Next →', page + 1, page === pages));
 }
 
 function pageRange(current, total) {
@@ -307,7 +324,7 @@ fPerson.addEventListener('input', () => {
 });
 
 fPerson.addEventListener('keydown', e => {
-  const items = suggestions.querySelectorAll('li');
+  const items  = suggestions.querySelectorAll('li');
   const active = suggestions.querySelector('li.active');
   if (e.key === 'ArrowDown') {
     e.preventDefault();
@@ -350,19 +367,19 @@ function hideSuggestions() {
 }
 
 function selectPerson(p) {
-  selectedPerson  = p;
-  fPerson.value   = p.name;
+  selectedPerson = p;
+  fPerson.value  = p.name;
   hideSuggestions();
   loadBadges(1);
 }
 
 // ── Clear filters ─────────────────────────────────────────────────────────────
 clearBtn.addEventListener('click', () => {
-  fQ.value          = '';
-  fStatus.value     = '';
-  fType.value       = '';
-  fPerson.value     = '';
-  selectedPerson    = null;
+  fQ.value       = '';
+  fStatus.value  = '';
+  fType.value    = '';
+  fPerson.value  = '';
+  selectedPerson = null;
   msCountry.reset();
   msIssuer.reset();
   hideSuggestions();
@@ -389,7 +406,9 @@ function showError(msg) {
   errorEl.style.display  = 'block';
   grid.innerHTML         = '';
   paginationEl.innerHTML = '';
-  countEl.textContent    = '';
+  paginationBotEl.innerHTML = '';
+  countEl.textContent       = '';
+  countBottomEl.textContent = '';
 }
 
 function formatDate(iso) {
