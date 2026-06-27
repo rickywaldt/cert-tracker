@@ -8,6 +8,7 @@ const SLUG_OVERRIDES = {
   'andreas diemer':    ['andreas-diemer.ae4216a6'],
   'ricky waldt':       ['ricky-waldt', 'ricky-waldt.f87f9886'],
   'stijn vermoesen':   ['stijnvermoesen'],
+  'stéphane este-gracias': ['sestegra'],
 };
 
 function nameToSlug(name) {
