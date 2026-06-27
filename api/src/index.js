@@ -1,10 +1,10 @@
 import express from 'express';
-import crypto from 'crypto';
-import pg from 'pg';
-import fetch from 'node-fetch';
+import crypto  from 'crypto';
+import pg      from 'pg';
+import fetch   from 'node-fetch';
 
 const { Pool } = pg;
-const app = express();
+const app  = express();
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 
 const BASIC_USER = process.env.BASIC_AUTH_USER;
@@ -31,18 +31,20 @@ async function initDb() {
     );
 
     CREATE TABLE IF NOT EXISTS badges (
-      id          SERIAL PRIMARY KEY,
-      person_id   INTEGER REFERENCES people(id) ON DELETE CASCADE,
-      credly_id   TEXT UNIQUE,
-      name        TEXT,
-      issuer      TEXT,
-      issued_at   DATE,
-      expires_at  DATE,
-      badge_url   TEXT,
-      image_url   TEXT,
-      description TEXT,
-      created_at  TIMESTAMPTZ DEFAULT now(),
-      updated_at  TIMESTAMPTZ DEFAULT now()
+      id            SERIAL PRIMARY KEY,
+      person_id     INTEGER REFERENCES people(id) ON DELETE CASCADE,
+      credly_id     TEXT UNIQUE,
+      name          TEXT,
+      issuer        TEXT,
+      issued_at     DATE,
+      expires_at    DATE,
+      badge_url     TEXT,
+      image_url     TEXT,
+      description   TEXT,
+      type_category TEXT,
+      level         TEXT,
+      created_at    TIMESTAMPTZ DEFAULT now(),
+      updated_at    TIMESTAMPTZ DEFAULT now()
     );
 
     CREATE TABLE IF NOT EXISTS scrape_runs (
@@ -56,10 +58,11 @@ async function initDb() {
       errors        JSONB DEFAULT '[]'
     );
 
-    CREATE INDEX IF NOT EXISTS idx_badges_person_id ON badges(person_id);
-    CREATE INDEX IF NOT EXISTS idx_badges_issuer    ON badges(issuer);
-    CREATE INDEX IF NOT EXISTS idx_badges_expires   ON badges(expires_at);
-    CREATE INDEX IF NOT EXISTS idx_people_country   ON people(country);
+    CREATE INDEX IF NOT EXISTS idx_badges_person_id     ON badges(person_id);
+    CREATE INDEX IF NOT EXISTS idx_badges_issuer        ON badges(issuer);
+    CREATE INDEX IF NOT EXISTS idx_badges_expires       ON badges(expires_at);
+    CREATE INDEX IF NOT EXISTS idx_badges_type_category ON badges(type_category);
+    CREATE INDEX IF NOT EXISTS idx_people_country       ON people(country);
   `);
   console.log('[api] Database ready');
 }
@@ -108,7 +111,7 @@ app.get('/api/image', async (req, res) => {
     return res.send(cached.buffer);
   }
   try {
-    const r = await fetch(url);
+    const r           = await fetch(url);
     if (!r.ok) return res.status(r.status).end();
     const buffer      = Buffer.from(await r.arrayBuffer());
     const contentType = r.headers.get('content-type') || 'image/png';
@@ -124,15 +127,17 @@ app.get('/api/image', async (req, res) => {
 // ── GET /api/meta ─────────────────────────────────────────────────────────────
 app.get('/api/meta', async (req, res) => {
   try {
-    const [countries, issuers, offices] = await Promise.all([
-      pool.query(`SELECT DISTINCT country FROM people WHERE country IS NOT NULL AND credly_found = true ORDER BY country`),
-      pool.query(`SELECT DISTINCT issuer   FROM badges WHERE issuer IS NOT NULL ORDER BY issuer`),
-      pool.query(`SELECT DISTINCT office   FROM people WHERE office  IS NOT NULL AND credly_found = true ORDER BY office`),
+    const [countries, issuers, offices, typeCategories] = await Promise.all([
+      pool.query(`SELECT DISTINCT country       FROM people WHERE country IS NOT NULL AND credly_found = true ORDER BY country`),
+      pool.query(`SELECT DISTINCT issuer        FROM badges WHERE issuer IS NOT NULL ORDER BY issuer`),
+      pool.query(`SELECT DISTINCT office        FROM people WHERE office  IS NOT NULL AND credly_found = true ORDER BY office`),
+      pool.query(`SELECT DISTINCT type_category FROM badges WHERE type_category IS NOT NULL ORDER BY type_category`),
     ]);
     res.json({
-      countries: countries.rows.map(r => r.country),
-      issuers:   issuers.rows.map(r => r.issuer),
-      offices:   offices.rows.map(r => r.office),
+      countries:      countries.rows.map(r => r.country),
+      issuers:        issuers.rows.map(r => r.issuer),
+      offices:        offices.rows.map(r => r.office),
+      type_categories: typeCategories.rows.map(r => r.type_category),
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -143,7 +148,7 @@ app.get('/api/meta', async (req, res) => {
 app.get('/api/people', async (req, res) => {
   try {
     const { q } = req.query;
-    let sql    = `SELECT id, name, credly_slug FROM people WHERE credly_found = true`;
+    let sql      = `SELECT id, name, credly_slug FROM people WHERE credly_found = true`;
     const params = [];
     if (q) {
       params.push(`%${q}%`);
@@ -160,20 +165,15 @@ app.get('/api/people', async (req, res) => {
 // ── GET /api/badges ───────────────────────────────────────────────────────────
 app.get('/api/badges', async (req, res) => {
   try {
-    const {
-      page      = 1,
-      per_page  = 24,
-      q,
-      person_id,
-      status,
-    } = req.query;
+    const { page = 1, per_page = 24, q, person_id, status } = req.query;
 
-    // multi-value params (can be comma-separated or repeated)
-    const rawCountries = [req.query.country].flat().filter(Boolean)
+    const rawCountries     = [req.query.country].flat().filter(Boolean)
       .flatMap(v => v.split(',').map(s => s.trim())).filter(Boolean);
-    const rawIssuers = [req.query.issuer].flat().filter(Boolean)
+    const rawIssuers       = [req.query.issuer].flat().filter(Boolean)
       .flatMap(v => v.split(',').map(s => s.trim())).filter(Boolean);
-    const rawStatuses = [status].flat().filter(Boolean)
+    const rawStatuses      = [status].flat().filter(Boolean)
+      .flatMap(v => v.split(',').map(s => s.trim())).filter(Boolean);
+    const rawTypeCategories = [req.query.type_category].flat().filter(Boolean)
       .flatMap(v => v.split(',').map(s => s.trim())).filter(Boolean);
 
     const perPage = Math.min(parseInt(per_page) || 24, 100);
@@ -182,16 +182,11 @@ app.get('/api/badges', async (req, res) => {
     const conditions = ['p.credly_found = true'];
     const params     = [];
 
-    // country: IN (exact match, case-sensitive as stored)
     if (rawCountries.length > 0) {
-      const placeholders = rawCountries.map((c, i) => {
-        params.push(c);
-        return `$${params.length}`;
-      });
+      const placeholders = rawCountries.map(c => { params.push(c); return `$${params.length}`; });
       conditions.push(`p.country IN (${placeholders.join(', ')})`);
     }
 
-    // issuer: ILIKE OR
     if (rawIssuers.length > 0) {
       const issuerClauses = rawIssuers.map(iss => {
         params.push(`%${iss}%`);
@@ -200,13 +195,11 @@ app.get('/api/badges', async (req, res) => {
       conditions.push(`(${issuerClauses.join(' OR ')})`);
     }
 
-    // person
     if (person_id) {
       params.push(parseInt(person_id));
       conditions.push(`p.id = $${params.length}`);
     }
 
-    // status (multi)
     if (rawStatuses.length > 0) {
       const statusClauses = rawStatuses.map(s => {
         if (s === 'active')        return `(b.expires_at IS NULL OR b.expires_at > now())`;
@@ -217,7 +210,14 @@ app.get('/api/badges', async (req, res) => {
       if (statusClauses.length > 0) conditions.push(`(${statusClauses.join(' OR ')})`);
     }
 
-    // keyword search
+    if (rawTypeCategories.length > 0) {
+      const tcClauses = rawTypeCategories.map(tc => {
+        params.push(tc);
+        return `b.type_category = $${params.length}`;
+      });
+      conditions.push(`(${tcClauses.join(' OR ')})`);
+    }
+
     if (q) {
       params.push(`%${q}%`);
       const qi = params.length;
@@ -230,7 +230,7 @@ app.get('/api/badges', async (req, res) => {
       pool.query(`
         SELECT
           b.id, b.credly_id, b.name, b.issuer, b.issued_at, b.expires_at,
-          b.badge_url, b.image_url, b.description,
+          b.badge_url, b.image_url, b.description, b.type_category, b.level,
           p.id AS person_id, p.name AS person_name, p.credly_slug,
           p.country, p.office, p.department
         FROM badges b
@@ -263,7 +263,6 @@ app.get('/api/scrape-status', async (req, res) => {
     );
     res.json(result.rows);
   } catch {
-    // Table may not exist yet before first scraper run
     res.json([]);
   }
 });

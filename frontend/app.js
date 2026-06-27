@@ -1,12 +1,12 @@
 // ── Config ────────────────────────────────────────────────────────────────────
-const API = '';
+const API     = '';
 const PER_PAGE = 48;
 
 // ── State ─────────────────────────────────────────────────────────────────────
-let currentPage = 1;
-let totalResults = 0;
+let currentPage   = 1;
+let totalResults  = 0;
 let selectedPerson = null;
-let allPeople = [];
+let allPeople     = [];
 let searchTimer;
 let personTimer;
 
@@ -18,10 +18,11 @@ const grid        = document.getElementById('grid');
 const loading     = document.getElementById('loading');
 const errorEl     = document.getElementById('error');
 const countEl     = document.getElementById('result-count');
-const paginationEl= document.getElementById('pagination');
+const paginationEl = document.getElementById('pagination');
 const scrapeInfo  = document.getElementById('scrape-info');
 const fQ          = document.getElementById('f-q');
 const fStatus     = document.getElementById('f-status');
+const fType       = document.getElementById('f-type');
 const fPerson     = document.getElementById('f-person');
 const suggestions = document.getElementById('f-person-suggestions');
 const clearBtn    = document.getElementById('clear-btn');
@@ -63,22 +64,17 @@ function createMultiSelect(containerId, key, placeholder) {
     cb.id       = `${containerId}-${value}`;
     cb.checked  = selected[key].has(value);
 
-    const lbl         = document.createElement('label');
-    lbl.htmlFor       = cb.id;
-    lbl.textContent   = optionLabel;
-    lbl.style.cursor  = 'pointer';
-    lbl.style.flex    = '1';
+    const lbl        = document.createElement('label');
+    lbl.htmlFor      = cb.id;
+    lbl.textContent  = optionLabel;
+    lbl.style.cursor = 'pointer';
+    lbl.style.flex   = '1';
 
     if (cb.checked) div.classList.add('is-checked');
 
     cb.addEventListener('change', () => {
-      if (cb.checked) {
-        selected[key].add(value);
-        div.classList.add('is-checked');
-      } else {
-        selected[key].delete(value);
-        div.classList.remove('is-checked');
-      }
+      if (cb.checked) { selected[key].add(value);    div.classList.add('is-checked'); }
+      else            { selected[key].delete(value);  div.classList.remove('is-checked'); }
       updateLabel();
       loadBadges(1);
     });
@@ -110,7 +106,6 @@ function createMultiSelect(containerId, key, placeholder) {
   return { populate, reset, close };
 }
 
-// Instantiate the two multi-selects
 const msCountry = createMultiSelect('ms-country', 'country', 'All countries');
 const msIssuer  = createMultiSelect('ms-issuer',  'issuer',  'All issuers');
 
@@ -125,9 +120,17 @@ async function loadMeta() {
   try {
     const res = await fetch(`${API}/api/meta`);
     if (!res.ok) return;
-    const { countries, issuers } = await res.json();
+    const { countries, issuers, type_categories } = await res.json();
     msCountry.populate(countries.map(c => ({ value: c, label: c })));
     msIssuer.populate(issuers.map(i => ({ value: i, label: i })));
+    // Populate type dropdown dynamically
+    fType.innerHTML = '<option value="">All types</option>';
+    (type_categories || []).forEach(tc => {
+      const opt = document.createElement('option');
+      opt.value = tc;
+      opt.textContent = tc;
+      fType.appendChild(opt);
+    });
   } catch (e) {
     console.warn('Could not load meta:', e.message);
   }
@@ -167,15 +170,12 @@ async function loadBadges(page = 1) {
 
   const params = new URLSearchParams();
 
-  // Multi-select: comma-separated
   if (selected.country.size) params.set('country', [...selected.country].join(','));
   if (selected.issuer.size)  params.set('issuer',  [...selected.issuer].join(','));
-
-  // Single-select status
-  if (fStatus.value) params.set('status', fStatus.value);
-
-  if (fQ.value.trim())  params.set('q', fQ.value.trim());
-  if (selectedPerson)   params.set('person_id', selectedPerson.id);
+  if (fStatus.value)         params.set('status',        fStatus.value);
+  if (fType.value)           params.set('type_category', fType.value);
+  if (fQ.value.trim())       params.set('q',             fQ.value.trim());
+  if (selectedPerson)        params.set('person_id',     selectedPerson.id);
   params.set('page',     page);
   params.set('per_page', PER_PAGE);
 
@@ -205,7 +205,7 @@ function renderBadges(badges) {
 }
 
 function makeCard(b) {
-  const card   = document.createElement('div');
+  const card     = document.createElement('div');
   card.className = 'card';
   const status   = badgeStatus(b.expires_at);
   const imageUrl = b.image_url
@@ -220,6 +220,7 @@ function makeCard(b) {
     </div>
     <div class="card__body">
       <span class="badge-status badge-status--${status.cls}">${status.label}</span>
+      ${b.type_category ? `<span class="badge-type">${escapeHTML(b.type_category)}</span>` : ''}
       <div class="card__name">${escapeHTML(b.name)}</div>
       <div class="card__issuer">${escapeHTML(b.issuer || '—')}</div>
       <div class="card__person">👤 ${escapeHTML(b.person_name)}${b.country ? ` · ${escapeHTML(b.country)}` : ''}</div>
@@ -238,146 +239,4 @@ function badgeStatus(expiresAt) {
   const exp        = new Date(expiresAt);
   const now        = new Date();
   const threeMonths = new Date(); threeMonths.setMonth(threeMonths.getMonth() + 3);
-  if (exp < now)        return { cls: 'expired', label: 'Expired' };
-  if (exp < threeMonths) return { cls: 'soon',    label: 'Expiring soon' };
-  return { cls: 'active', label: 'Active' };
-}
-
-// ── Results bar ───────────────────────────────────────────────────────────────
-function renderResultsBar(total, page) {
-  const from = (page - 1) * PER_PAGE + 1;
-  const to   = Math.min(page * PER_PAGE, total);
-  countEl.textContent = total === 0 ? 'No results' : `Showing ${from}–${to} of ${total} badges`;
-}
-
-// ── Pagination ────────────────────────────────────────────────────────────────
-function renderPagination(total, page) {
-  paginationEl.innerHTML = '';
-  const totalPages = Math.ceil(total / PER_PAGE);
-  if (totalPages <= 1) return;
-
-  const prev = document.createElement('button');
-  prev.textContent = '←';
-  prev.disabled = page <= 1;
-  prev.addEventListener('click', () => loadBadges(page - 1));
-  paginationEl.appendChild(prev);
-
-  pageRange(page, totalPages).forEach(p => {
-    if (p === '…') {
-      const span = document.createElement('span');
-      span.textContent = '…';
-      span.style.padding = '0 0.25rem';
-      paginationEl.appendChild(span);
-    } else {
-      const btn = document.createElement('button');
-      btn.textContent = p;
-      if (p === page) btn.className = 'active';
-      btn.addEventListener('click', () => loadBadges(p));
-      paginationEl.appendChild(btn);
-    }
-  });
-
-  const next = document.createElement('button');
-  next.textContent = '→';
-  next.disabled = page >= totalPages;
-  next.addEventListener('click', () => loadBadges(page + 1));
-  paginationEl.appendChild(next);
-}
-
-function pageRange(current, total) {
-  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
-  const pages = [1];
-  if (current > 3) pages.push('…');
-  for (let p = Math.max(2, current - 1); p <= Math.min(total - 1, current + 1); p++) pages.push(p);
-  if (current < total - 2) pages.push('…');
-  pages.push(total);
-  return pages;
-}
-
-// ── Person autocomplete ───────────────────────────────────────────────────────
-function showSuggestions(q) {
-  suggestions.innerHTML = '';
-  if (q.length < 2) { suggestions.classList.remove('open'); return; }
-
-  const matches = allPeople
-    .filter(p => p.name.toLowerCase().includes(q.toLowerCase()))
-    .slice(0, 10);
-
-  if (!matches.length) { suggestions.classList.remove('open'); return; }
-
-  matches.forEach(p => {
-    const li  = document.createElement('li');
-    const idx = p.name.toLowerCase().indexOf(q.toLowerCase());
-    const pre   = escapeHTML(p.name.slice(0, idx));
-    const match = escapeHTML(p.name.slice(idx, idx + q.length));
-    const post  = escapeHTML(p.name.slice(idx + q.length));
-    li.innerHTML = `${pre}<strong>${match}</strong>${post}`;
-
-    li.addEventListener('mousedown', e => {
-      e.preventDefault();
-      selectedPerson = p;
-      fPerson.value  = p.name;
-      suggestions.classList.remove('open');
-      loadBadges(1);
-    });
-    suggestions.appendChild(li);
-  });
-
-  suggestions.classList.add('open');
-}
-
-fPerson.addEventListener('input', () => {
-  if (!fPerson.value.trim()) {
-    selectedPerson = null;
-    suggestions.classList.remove('open');
-    loadBadges(1);
-    return;
-  }
-  clearTimeout(personTimer);
-  personTimer = setTimeout(() => showSuggestions(fPerson.value.trim()), 150);
-});
-
-fPerson.addEventListener('blur', () => {
-  setTimeout(() => suggestions.classList.remove('open'), 160);
-});
-
-fPerson.addEventListener('keydown', e => {
-  if (e.key === 'Escape') {
-    selectedPerson = null;
-    fPerson.value  = '';
-    suggestions.classList.remove('open');
-    loadBadges(1);
-  }
-});
-
-// ── Status filter ─────────────────────────────────────────────────────────────
-fStatus.addEventListener('change', () => loadBadges(1));
-
-// ── Keyword search ────────────────────────────────────────────────────────────
-fQ.addEventListener('input', () => {
-  clearTimeout(searchTimer);
-  searchTimer = setTimeout(() => loadBadges(1), 400);
-});
-
-// ── Clear all filters ─────────────────────────────────────────────────────────
-clearBtn.addEventListener('click', () => {
-  msCountry.reset();
-  msIssuer.reset();
-  fStatus.value  = '';
-  fQ.value       = '';
-  fPerson.value  = '';
-  selectedPerson = null;
-  suggestions.classList.remove('open');
-  loadBadges(1);
-});
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-function showLoading(on) { loading.style.display = on ? 'block' : 'none'; }
-function showError(msg)  { errorEl.textContent = msg; errorEl.style.display = 'block'; }
-function formatDate(d)   { return d ? new Date(d).toLocaleDateString() : '—'; }
-function escapeHTML(s)   { return String(s ?? '').replace(/[&<>"']/g, c =>
-  ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
-function escapeAttr(s)   { return escapeHTML(s); }
-
-// ── Start ─────────────────────────────────────────────────────────────────────
-boot();
+  if (exp < now)         return { cls: 'expired', label: '
